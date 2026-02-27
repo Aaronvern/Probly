@@ -5,6 +5,8 @@ import { Providers } from "./providers";
 export const metadata: Metadata = {
   title: "Probly — The 1inch of BNB Prediction Markets",
   description: "Aggregate liquidity across Opinion Labs, Predict.fun, and Probable. Best prices, arb detection, smart routing.",
+  viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
+  themeColor: "#0A0A0F",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
