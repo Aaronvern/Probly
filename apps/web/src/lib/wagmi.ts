@@ -5,5 +5,5 @@ export const wagmiConfig = getDefaultConfig({
   appName: "Probly",
   projectId: "probly-bnb-hackathon",
   chains: [bsc, bscTestnet],
-  ssr: true,
+  ssr: false,
 });

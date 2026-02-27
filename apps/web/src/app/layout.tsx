@@ -1,11 +1,16 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
   title: "Probly — The 1inch of BNB Prediction Markets",
   description: "Aggregate liquidity across Opinion Labs, Predict.fun, and Probable. Best prices, arb detection, smart routing.",
-  viewport: "width=device-width, initial-scale=1, viewport-fit=cover",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
   themeColor: "#0A0A0F",
 };
 
