@@ -90,6 +90,29 @@ export async function postComment(marketId: string, text: string, authorAddress:
   return res.json();
 }
 
+export interface MarketStats {
+  likes: number;
+  comments: number;
+  liked: boolean;
+}
+
+export async function getMarketStats(marketId: string, address?: string): Promise<MarketStats> {
+  const url = `${API}/api/social/stats/${marketId}${address ? `?address=${address}` : ""}`;
+  const res = await fetch(url);
+  if (!res.ok) return { likes: 0, comments: 0, liked: false };
+  return res.json();
+}
+
+export async function toggleLike(marketId: string, address: string): Promise<{ liked: boolean }> {
+  const res = await fetch(`${API}/api/social/like`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ marketId, address }),
+  });
+  if (!res.ok) throw new Error("Failed to toggle like");
+  return res.json();
+}
+
 export async function followUser(followerAddress: string, targetAddress: string) {
   const res = await fetch(`${API}/api/social/follow`, {
     method: "POST",

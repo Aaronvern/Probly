@@ -339,6 +339,47 @@ app.get("/api/social/following/:address", async (req, res) => {
   }
 });
 
+// GET /api/social/stats/:marketId — likes count + comment count in one shot
+app.get("/api/social/stats/:marketId", async (req, res) => {
+  try {
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const { marketId } = req.params;
+    const { address } = req.query as { address?: string };
+    const [likes, comments] = await Promise.all([
+      db.collection("likes").countDocuments({ marketId }),
+      db.collection("comments").countDocuments({ marketId }),
+    ]);
+    const liked = address
+      ? !!(await db.collection("likes").findOne({ marketId, address }))
+      : false;
+    res.json({ likes, comments, liked });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/social/like — toggle like
+app.post("/api/social/like", async (req, res) => {
+  try {
+    const { marketId, address } = req.body;
+    if (!marketId || !address) {
+      res.status(400).json({ error: "Missing marketId or address" });
+      return;
+    }
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const existing = await db.collection("likes").findOne({ marketId, address });
+    if (existing) {
+      await db.collection("likes").deleteOne({ marketId, address });
+      res.json({ liked: false });
+    } else {
+      await db.collection("likes").insertOne({ marketId, address, createdAt: Date.now() });
+      res.json({ liked: true });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/sync — trigger market sync across all platforms
 app.post("/api/sync", async (_req, res) => {
   try {
