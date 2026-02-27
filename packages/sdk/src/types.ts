@@ -22,6 +22,8 @@ export interface UnifiedMarket {
   resolutionSource?: string;
   createdAt: number;
   expiresAt?: number;
+  /** Platform-specific raw data for debugging / advanced use */
+  _raw?: Record<string, any>;
 }
 
 /** Normalized orderbook entry */
