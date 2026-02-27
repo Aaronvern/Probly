@@ -1,0 +1,11 @@
+{
+  "name": "@probly/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "hardhat": "^2.23.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@nomicfoundation/hardhat-viem": "^2.0.0"
+  }
+}

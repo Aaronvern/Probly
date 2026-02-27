@@ -1,0 +1,12 @@
+{
+  "name": "@probly/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "dependencies": {
+    "@probly/sdk": "*",
+    "@modelcontextprotocol/sdk": "^1.12.3",
+    "dotenv": "^17.3.1"
+  }
+}

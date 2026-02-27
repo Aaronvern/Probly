@@ -1,0 +1,20 @@
+{
+  "name": "@probly/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "dependencies": {
+    "@probly/sdk": "*",
+    "express": "^5.1.0",
+    "cors": "^2.8.5",
+    "mongodb": "^6.16.0",
+    "dotenv": "^17.3.1",
+    "viem": "^2.46.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/cors": "^2.8.18",
+    "vitest": "^3.2.4"
+  }
+}

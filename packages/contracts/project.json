@@ -1,0 +1,28 @@
+{
+  "name": "contracts",
+  "sourceRoot": "packages/contracts",
+  "projectType": "library",
+  "targets": {
+    "compile": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx hardhat compile",
+        "cwd": "packages/contracts"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx hardhat test",
+        "cwd": "packages/contracts"
+      }
+    },
+    "deploy": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx hardhat run scripts/deploy.ts --network bscTestnet",
+        "cwd": "packages/contracts"
+      }
+    }
+  }
+}

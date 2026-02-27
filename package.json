@@ -1,0 +1,38 @@
+{
+  "name": "probly",
+  "version": "0.1.0",
+  "description": "Probly — Prediction market super-aggregator for BNB Chain",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "generate-probable-key": "tsx scripts/generate-probable-key.ts",
+    "dev:api": "npx nx serve api",
+    "dev:web": "npx nx dev web",
+    "build": "npx nx run-many -t build",
+    "test": "npx nx run-many -t test",
+    "lint": "npx nx run-many -t lint"
+  },
+  "keywords": [
+    "bnb",
+    "prediction-markets",
+    "aggregator",
+    "probly"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@prob/clob": "^0.5.0",
+    "@prob/core": "^0.3.0",
+    "@prob/types": "^0.0.1",
+    "dotenv": "^17.3.1",
+    "tsx": "^4.21.0",
+    "viem": "^2.46.3"
+  },
+  "devDependencies": {
+    "nx": "^21.3.2",
+    "typescript": "^5.8.3"
+  }
+}
