@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "probly": {
+      "command": "npx",
+      "args": ["tsx", "apps/mcp-server/src/main.ts"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "OPINIONLABS_API_KEY": "your_key",
+        "PREDICTFUN_API_KEY": "your_key",
+        "PROBABLE_API_KEY": "your_key",
+        "PRIVATE_KEY": "your_key",
+        "OPINIONLABS_MULTISIG": "0x191b2ad7187805b5ff0a8d8db39cdf5d01ab326a",
+        "BSC_RPC_URL": "https://bsc-dataseed.binance.org/",
+        "MONGODB_URI": "your_mongodb_uri",
+        "ANTHROPIC_API_KEY": "your_key"
+      }
+    }
+  }
+}

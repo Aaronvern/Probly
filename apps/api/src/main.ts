@@ -272,6 +272,73 @@ app.post("/api/trade/execute", async (req, res) => {
   }
 });
 
+// ── Social API ────────────────────────────────────────────────────────────────
+
+// GET /api/social/comments/:marketId
+app.get("/api/social/comments/:marketId", async (req, res) => {
+  try {
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const comments = await db.collection("comments")
+      .find({ marketId: req.params.marketId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .toArray();
+    res.json(comments);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/social/comments
+app.post("/api/social/comments", async (req, res) => {
+  try {
+    const { marketId, text, authorAddress, author } = req.body;
+    if (!marketId || !text || !authorAddress) {
+      res.status(400).json({ error: "Missing marketId, text, or authorAddress" });
+      return;
+    }
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const doc = { marketId, text: text.slice(0, 280), author, authorAddress, createdAt: Date.now() };
+    const result = await db.collection("comments").insertOne(doc);
+    res.json({ ...doc, _id: result.insertedId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/social/follow
+app.post("/api/social/follow", async (req, res) => {
+  try {
+    const { followerAddress, targetAddress } = req.body;
+    if (!followerAddress || !targetAddress) {
+      res.status(400).json({ error: "Missing followerAddress or targetAddress" });
+      return;
+    }
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    await db.collection("follows").updateOne(
+      { followerAddress, targetAddress },
+      { $set: { followerAddress, targetAddress, createdAt: Date.now() } },
+      { upsert: true },
+    );
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/social/following/:address
+app.get("/api/social/following/:address", async (req, res) => {
+  try {
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const follows = await db.collection("follows")
+      .find({ followerAddress: req.params.address })
+      .toArray();
+    res.json(follows.map((f: any) => f.targetAddress));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/sync — trigger market sync across all platforms
 app.post("/api/sync", async (_req, res) => {
   try {
