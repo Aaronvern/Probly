@@ -121,9 +121,9 @@ function extractTokens(market: UnifiedMarket, platform: Platform): TokenMapping 
     yesTokenId = raw.yesTokenId ?? "";
     noTokenId = raw.noTokenId ?? "";
   } else if (platform === "predict") {
-    const tokens = raw.outcomeTokens ?? [];
-    yesTokenId = tokens[0]?.onChainId ?? "";
-    noTokenId = tokens[1]?.onChainId ?? "";
+    // Predict uses market ID for orderbook lookups (YES-only book, NO = 1 - YES)
+    yesTokenId = marketId;
+    noTokenId = marketId;
   } else if (platform === "probable") {
     const tokens = raw.tokens ?? [];
     yesTokenId = tokens[0]?.token_id ?? "";

@@ -34,8 +34,10 @@ interface PredictMarketRaw {
 }
 
 interface PredictOrderbookRaw {
-  bids: { price: string; size: string }[];
-  asks: { price: string; size: string }[];
+  marketId: number;
+  // [price, quantity] tuples, YES outcome only
+  bids: [number, number][];
+  asks: [number, number][];
 }
 
 export class PredictAdapter implements PlatformAdapter {
@@ -60,22 +62,26 @@ export class PredictAdapter implements PlatformAdapter {
   }
 
   async getMarkets(): Promise<UnifiedMarket[]> {
-    const result = await this.fetch<PredictMarketRaw[]>("/v1/markets", { limit: "20" });
+    const result = await this.fetch<PredictMarketRaw[]>("/v1/markets", {
+      first: "20",
+      status: "OPEN",
+    });
     return result.map((m) => this.normalizeMarket(m));
   }
 
-  async getOrderbook(tokenId: string): Promise<UnifiedOrderbook> {
-    // Predict uses market ID for orderbook, not tokenId directly
+  async getOrderbook(marketId: string): Promise<UnifiedOrderbook> {
+    // marketId is the numeric market ID; Predict has a single YES-only orderbook per market
     const raw = await this.fetch<PredictOrderbookRaw>(
-      `/v1/markets/${tokenId}/orderbook`,
+      `/v1/markets/${marketId}/orderbook`,
     );
-    const bids: PriceLevel[] = (raw.bids ?? []).map((b) => ({ price: Number(b.price), size: Number(b.size) }));
-    const asks: PriceLevel[] = (raw.asks ?? []).map((a) => ({ price: Number(a.price), size: Number(a.size) }));
+    // Response: bids/asks are [price, quantity] tuples
+    const bids: PriceLevel[] = (raw.bids ?? []).map(([price, size]) => ({ price, size }));
+    const asks: PriceLevel[] = (raw.asks ?? []).map(([price, size]) => ({ price, size }));
     const bestBid = bids[0]?.price ?? 0;
     const bestAsk = asks[0]?.price ?? 1;
     return {
       platform: "predict",
-      tokenId,
+      tokenId: marketId,
       outcome: "YES",
       bids,
       asks,
@@ -86,9 +92,10 @@ export class PredictAdapter implements PlatformAdapter {
     };
   }
 
-  async getPrice(tokenId: string, _side: Side): Promise<number> {
-    const result = await this.fetch<any>(`/v1/markets/${tokenId}/last-sale`);
-    return Number(result.price ?? 0);
+  async getPrice(marketId: string, side: Side): Promise<number> {
+    // Derive price from orderbook — more reliable than last-sale which can be stale/empty
+    const book = await this.getOrderbook(marketId);
+    return side === "BUY" ? book.bestAsk : book.bestBid;
   }
 
   async getPositions(walletAddress: string): Promise<UnifiedPosition[]> {
@@ -117,7 +124,7 @@ export class PredictAdapter implements PlatformAdapter {
       slug: m.categorySlug,
       outcomes,
       platformIds: { predict: String(m.id) },
-      status: m.tradingStatus === "ACTIVE" ? "active" : m.status === "RESOLVED" ? "resolved" : "closed",
+      status: m.tradingStatus === "OPEN" ? "active" : m.status === "RESOLVED" ? "resolved" : "closed",
       resolutionSource: m.description?.slice(0, 200),
       createdAt: new Date(m.createdAt).getTime(),
       _raw: {

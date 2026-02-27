@@ -14,7 +14,8 @@ import { connectDB } from "../../../packages/sdk/src/db/mongo.js";
 import { ensureIndexes, getActiveEvents, getEventById } from "../../../packages/sdk/src/db/events.js";
 import { matchAndSyncEvents } from "../../../packages/sdk/src/matcher/index.js";
 import { aggregateOrderbooks } from "../../../packages/sdk/src/aggregator/index.js";
-import type { Platform, PlatformAdapter } from "../../../packages/sdk/src/types.js";
+import { SmartOrderRouter } from "../../../packages/sdk/src/router/index.js";
+import type { Platform, PlatformAdapter, TradeIntent } from "../../../packages/sdk/src/types.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -33,6 +34,10 @@ const adaptersMap = new Map<Platform, PlatformAdapter>([
   ["predict", predict],
   ["probable", probable],
 ]);
+
+// Init Smart Order Router
+const sor = new SmartOrderRouter();
+for (const adapter of adaptersList) sor.registerAdapter(adapter);
 
 // Health check
 app.get("/health", (_req, res) => {
@@ -74,6 +79,95 @@ app.get("/api/orderbook/:globalEventId", async (req, res) => {
 
     const aggregated = await aggregateOrderbooks(event, adaptersMap);
     res.json(aggregated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/trade/quote — get optimal routing plan for a trade intent
+// Body: { globalEventId, outcome: "YES"|"NO", side: "BUY"|"SELL", amount: number, maxSlippage?: number }
+app.post("/api/trade/quote", async (req, res) => {
+  try {
+    const { globalEventId, outcome, side, amount, maxSlippage } = req.body as TradeIntent;
+    if (!globalEventId || !outcome || !side || !amount) {
+      res.status(400).json({ error: "Missing required fields: globalEventId, outcome, side, amount" });
+      return;
+    }
+
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const event = await getEventById(db, globalEventId);
+    if (!event) {
+      res.status(404).json({ error: "Event not found" });
+      return;
+    }
+    if (event.platforms.length === 0) {
+      res.status(400).json({ error: "Event has no platform listings" });
+      return;
+    }
+
+    const intent: TradeIntent = { globalEventId, outcome, side, amount, maxSlippage };
+    const route = await sor.quote(intent, event);
+
+    res.json({
+      globalEventId,
+      question: event.question,
+      intent,
+      route: {
+        legs: route.legs.map((l) => ({
+          platform: l.platform,
+          tokenId: l.tokenId,
+          amount: l.amount,
+          expectedPrice: l.expectedPrice,
+          expectedShares: l.expectedShares,
+          allocationPct: Math.round((l.amount / route.totalCost) * 1000) / 10,
+        })),
+        totalCost: route.totalCost,
+        weightedAvgPrice: route.weightedAvgPrice,
+        estimatedShares: route.estimatedShares,
+        platformCount: route.legs.length,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/trade/execute — execute a routed trade
+// Body: same as /quote — quotes then immediately executes
+app.post("/api/trade/execute", async (req, res) => {
+  try {
+    const { globalEventId, outcome, side, amount, maxSlippage } = req.body as TradeIntent;
+    if (!globalEventId || !outcome || !side || !amount) {
+      res.status(400).json({ error: "Missing required fields: globalEventId, outcome, side, amount" });
+      return;
+    }
+
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const event = await getEventById(db, globalEventId);
+    if (!event) {
+      res.status(404).json({ error: "Event not found" });
+      return;
+    }
+
+    const intent: TradeIntent = { globalEventId, outcome, side, amount, maxSlippage };
+    const route = await sor.quote(intent, event);
+    const result = await sor.execute(route);
+
+    res.json({
+      globalEventId,
+      question: event.question,
+      success: result.success,
+      totalSpent: result.totalSpent,
+      legs: result.legs.map((l) => ({
+        platform: l.platform,
+        tokenId: l.tokenId,
+        amount: l.amount,
+        expectedPrice: l.expectedPrice,
+        orderId: l.orderId,
+        simulated: l.simulated,
+        ...(l.error ? { error: l.error } : {}),
+      })),
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
