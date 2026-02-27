@@ -6,14 +6,15 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
     "@opinion-labs/opinion-clob-sdk": "latest",
     "@predictdotfun/sdk": "latest",
     "@prob/clob": "^0.5.0",
     "@prob/core": "^0.3.0",
     "@prob/types": "^0.0.1",
-    "viem": "^2.46.3",
+    "bignumber.js": "^9.3.1",
     "ethers": "^6.13.5",
-    "bignumber.js": "^9.3.1"
+    "viem": "^2.46.3"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

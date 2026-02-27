@@ -6,12 +6,23 @@
  */
 
 // Platform adapters
-export * from "./adapters/opinion.js";
-export * from "./adapters/predict.js";
-export * from "./adapters/probable.js";
+export { OpinionAdapter } from "./adapters/opinion.js";
+export { PredictAdapter } from "./adapters/predict.js";
+export { ProbableAdapter } from "./adapters/probable.js";
 
 // Smart Order Router
-export * from "./router/index.js";
+export { SmartOrderRouter } from "./router/index.js";
+
+// Event matcher
+export { matchAndSyncEvents } from "./matcher/index.js";
+
+// Orderbook aggregator
+export { aggregateOrderbooks } from "./aggregator/index.js";
+
+// Database
+export { connectDB, getDB, closeDB } from "./db/mongo.js";
+export { getEventsCollection, getActiveEvents, getEventById, ensureIndexes } from "./db/events.js";
+export type { GlobalEvent, TokenMapping } from "./db/events.js";
 
 // Shared types
 export * from "./types.js";
