@@ -3,7 +3,7 @@
 interface PriceChartProps {
   marketId: string;
   currentPrice: number; // 0-1
-  height?: number;
+  height?: number | string;
 }
 
 function seededRand(seed: string) {
@@ -33,114 +33,96 @@ function generateHistory(marketId: string, endPrice: number, points = 80): numbe
   return prices;
 }
 
-const W = 400;
-const H = 200;
-const PAD_LEFT = 8;
-const PAD_RIGHT = 36;
-const PAD_TOP = 8;
-const PAD_BOTTOM = 24;
-const CW = W - PAD_LEFT - PAD_RIGHT;
-const CH = H - PAD_TOP - PAD_BOTTOM;
+const GRID_LINES = [1, 0.75, 0.5, 0.25, 0];
+const PAD_RIGHT_PCT = 10; // % of width reserved for labels
 
-const GRID_LINES = [0, 0.25, 0.5, 0.75, 1];
-const MONTHS = ["Jan", "Feb"];
-
-export function PriceChart({ marketId, currentPrice, height }: PriceChartProps) {
+export function PriceChart({ marketId, currentPrice, height = "100%" }: PriceChartProps) {
   const prices = generateHistory(marketId, currentPrice);
 
-  const toX = (i: number) => PAD_LEFT + (i / (prices.length - 1)) * CW;
-  const toY = (p: number) => PAD_TOP + (1 - p) * CH;
+  // Build SVG polyline using 0-100 coordinate space (no padding in SVG itself)
+  const toX = (i: number) => (i / (prices.length - 1)) * 100;
+  const toY = (p: number) => (1 - p) * 100;
 
   const points = prices.map((p, i) => `${toX(i)},${toY(p)}`).join(" ");
 
-  // Area fill path
   const areaPoints = [
-    `${toX(0)},${toY(0)}`,
+    `0,100`,
     ...prices.map((p, i) => `${toX(i)},${toY(p)}`),
-    `${toX(prices.length - 1)},${toY(0)}`,
+    `100,100`,
   ].join(" ");
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      style={{ width: "100%", height: height ?? "100%" }}
-      className="block"
-    >
-      {/* Horizontal dotted gridlines */}
-      {GRID_LINES.map((g) => (
-        <line
-          key={g}
-          x1={PAD_LEFT}
-          y1={toY(g)}
-          x2={W - PAD_RIGHT}
-          y2={toY(g)}
-          stroke="#2D2D3E"
-          strokeDasharray="3 6"
-          strokeWidth="0.8"
-        />
-      ))}
+    <div className="relative w-full" style={{ height }}>
+      {/* Y-axis labels — plain HTML, never stretched */}
+      <div className="absolute top-0 right-0 bottom-6 flex flex-col justify-between items-end pr-1 z-10" style={{ width: `${PAD_RIGHT_PCT}%` }}>
+        {GRID_LINES.map((g) => (
+          <span key={g} className="text-[10px] text-[#475569] font-mono leading-none">
+            {Math.round(g * 100)}%
+          </span>
+        ))}
+      </div>
 
-      {/* Y-axis labels */}
-      {GRID_LINES.map((g) => (
-        <text
-          key={g}
-          x={W - PAD_RIGHT + 4}
-          y={toY(g) + 3.5}
-          fontSize="10"
-          fill="#475569"
-          fontFamily="monospace"
+      {/* X-axis labels */}
+      <div className="absolute bottom-0 left-0 right-[10%] flex justify-between px-0 z-10">
+        <span className="text-[10px] text-[#475569] font-mono">Jan</span>
+        <span className="text-[10px] text-[#475569] font-mono">Feb</span>
+      </div>
+
+      {/* SVG chart — stretched to fill, labels are outside */}
+      <div className="absolute inset-0 right-[10%] bottom-6">
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="w-full h-full block"
         >
-          {Math.round(g * 100)}%
-        </text>
-      ))}
+          {/* Horizontal dotted gridlines */}
+          {GRID_LINES.map((g) => (
+            <line
+              key={g}
+              x1="0" y1={toY(g)}
+              x2="100" y2={toY(g)}
+              stroke="#2D2D3E"
+              strokeDasharray="1.5 3"
+              strokeWidth="0.4"
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
 
-      {/* X-axis month labels */}
-      {MONTHS.map((m, i) => (
-        <text
-          key={m}
-          x={PAD_LEFT + (i / (MONTHS.length - 1)) * CW}
-          y={H - 4}
-          fontSize="10"
-          fill="#475569"
-          fontFamily="monospace"
-          textAnchor={i === 0 ? "start" : "end"}
-        >
-          {m}
-        </text>
-      ))}
+          {/* Area fill */}
+          <polygon
+            points={areaPoints}
+            fill="url(#areaGrad)"
+            opacity="0.12"
+          />
 
-      {/* Area fill */}
-      <polygon
-        points={areaPoints}
-        fill="url(#areaGrad)"
-        opacity="0.15"
-      />
+          {/* Price line */}
+          <polyline
+            points={points}
+            fill="none"
+            stroke="white"
+            strokeWidth="1.5"
+            vectorEffect="non-scaling-stroke"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
 
-      {/* Price line */}
-      <polyline
-        points={points}
-        fill="none"
-        stroke="white"
-        strokeWidth="1.5"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
+          {/* Current price dot */}
+          <circle
+            cx={toX(prices.length - 1)}
+            cy={toY(currentPrice)}
+            r="2.5"
+            fill="white"
+            vectorEffect="non-scaling-stroke"
+          />
 
-      {/* Current price dot */}
-      <circle
-        cx={toX(prices.length - 1)}
-        cy={toY(currentPrice)}
-        r="3"
-        fill="white"
-      />
-
-      <defs>
-        <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="white" stopOpacity="0.8" />
-          <stop offset="100%" stopColor="white" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-    </svg>
+          <defs>
+            <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="white" stopOpacity="1" />
+              <stop offset="100%" stopColor="white" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+    </div>
   );
 }
