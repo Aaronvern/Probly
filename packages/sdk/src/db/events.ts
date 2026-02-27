@@ -15,6 +15,14 @@ export interface TokenMapping {
   noTokenId: string;
 }
 
+export interface OrderbookCache {
+  yes: { bestAsk?: { price: number; platform: Platform }; bestBid?: { price: number; platform: Platform } };
+  no: { bestAsk?: { price: number; platform: Platform }; bestBid?: { price: number; platform: Platform } };
+  hasArb: boolean;
+  arbSpread?: number;
+  cachedAt: number;
+}
+
 export interface GlobalEvent {
   _id?: string;
   globalEventId: string;
@@ -28,6 +36,7 @@ export interface GlobalEvent {
   expiresAt?: number;
   tags?: string[];
   updatedAt: number;
+  orderbookCache?: OrderbookCache;
 }
 
 let collection: Collection<GlobalEvent> | null = null;
@@ -70,4 +79,20 @@ export async function getEventById(
 ): Promise<GlobalEvent | null> {
   const col = getEventsCollection(db);
   return col.findOne({ globalEventId });
+}
+
+export async function bulkUpdateOrderbookCache(
+  db: Db,
+  updates: { globalEventId: string; cache: OrderbookCache }[],
+): Promise<void> {
+  if (updates.length === 0) return;
+  const col = getEventsCollection(db);
+  await Promise.all(
+    updates.map(({ globalEventId, cache }) =>
+      col.updateOne(
+        { globalEventId },
+        { $set: { orderbookCache: cache, updatedAt: Date.now() } },
+      ),
+    ),
+  );
 }

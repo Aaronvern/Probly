@@ -13,7 +13,8 @@ import { ProbableAdapter } from "../../../packages/sdk/src/adapters/probable.js"
 import { connectDB } from "../../../packages/sdk/src/db/mongo.js";
 import { ensureIndexes, getActiveEvents, getEventById } from "../../../packages/sdk/src/db/events.js";
 import { matchAndSyncEvents } from "../../../packages/sdk/src/matcher/index.js";
-import { aggregateOrderbooks } from "../../../packages/sdk/src/aggregator/index.js";
+import { aggregateOrderbooks, buildAggFromCache } from "../../../packages/sdk/src/aggregator/index.js";
+import { PriceFeed } from "../../../packages/sdk/src/ws/price-feed.js";
 import { SmartOrderRouter } from "../../../packages/sdk/src/router/index.js";
 import type { Platform, PlatformAdapter, TradeIntent } from "../../../packages/sdk/src/types.js";
 
@@ -38,6 +39,9 @@ const adaptersMap = new Map<Platform, PlatformAdapter>([
 // Init Smart Order Router
 const sor = new SmartOrderRouter();
 for (const adapter of adaptersList) sor.registerAdapter(adapter);
+
+// WS price feed — started on boot, shared across all requests
+const priceFeed = new PriceFeed();
 
 // Health check
 app.get("/health", (_req, res) => {
@@ -67,7 +71,92 @@ app.get("/api/markets", async (_req, res) => {
   }
 });
 
-// GET /api/orderbook/:globalEventId — aggregated orderbook with arb detection
+// GET /api/prices — all active markets with best prices from WS cache (instant)
+// Falls back to REST for tokens not yet in cache. Frontend should poll this at ~2s interval.
+app.get("/api/prices", async (_req, res) => {
+  try {
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const events = await getActiveEvents(db);
+    const CACHE_MAX_AGE = 60_000;
+
+    const results = await Promise.all(events.map(async (event) => {
+      // Use WS cache if ANY non-Opinion platform has fresh data.
+      // buildAggFromCache handles missing platforms gracefully (defaults to ask=1, bid=0).
+      const hasWsData = event.platforms.some(p =>
+        p.platform !== "opinion" && priceFeed.isFresh(p.yesTokenId, CACHE_MAX_AGE),
+      );
+
+      if (hasWsData) {
+        const agg = buildAggFromCache(event, priceFeed);
+        return {
+          globalEventId: event.globalEventId,
+          question: event.question,
+          platforms: event.platforms.map(p => p.platform),
+          yes: { bestAsk: agg.yes.bestAsk?.price, bestAskPlatform: agg.yes.bestAsk?.platform },
+          no: { bestAsk: agg.no.bestAsk?.price, bestAskPlatform: agg.no.bestAsk?.platform },
+          hasArb: agg.hasArb,
+          arbSpread: agg.arbSpread,
+          dataSource: "ws" as const,
+        };
+      }
+
+      // FIX 3: REST fallback — only for Predict/Probable (they handle parallel calls fine).
+      // Opinion is event-driven WS only; skip its REST to avoid 429 storms.
+      // Opinion-only markets show as "pending" until WS fires a trade event.
+      const nonOpinionPlatforms = event.platforms.filter(p => p.platform !== "opinion");
+      if (nonOpinionPlatforms.length === 0) {
+        // Opinion-only market: return last WS price if any, else pending
+        const cachedAgg = buildAggFromCache(event, priceFeed);
+        const hasAnyPrice = cachedAgg.yes.bestAsk?.price < 1 || cachedAgg.no.bestAsk?.price < 1;
+        return {
+          globalEventId: event.globalEventId,
+          question: event.question,
+          platforms: event.platforms.map(p => p.platform),
+          yes: { bestAsk: hasAnyPrice ? cachedAgg.yes.bestAsk?.price : null, bestAskPlatform: hasAnyPrice ? cachedAgg.yes.bestAsk?.platform : null },
+          no: { bestAsk: hasAnyPrice ? cachedAgg.no.bestAsk?.price : null, bestAskPlatform: hasAnyPrice ? cachedAgg.no.bestAsk?.platform : null },
+          hasArb: false,
+          arbSpread: undefined,
+          dataSource: hasAnyPrice ? "ws" as const : "pending" as const,
+        };
+      }
+
+      try {
+        // Build a partial adapters map without Opinion for REST fallback
+        const fallbackMap = new Map(
+          [...adaptersMap].filter(([k]) => k !== "opinion"),
+        );
+        const agg = await aggregateOrderbooks(event, fallbackMap);
+        return {
+          globalEventId: event.globalEventId,
+          question: event.question,
+          platforms: event.platforms.map(p => p.platform),
+          yes: { bestAsk: agg.yes.bestAsk?.price, bestAskPlatform: agg.yes.bestAsk?.platform },
+          no: { bestAsk: agg.no.bestAsk?.price, bestAskPlatform: agg.no.bestAsk?.platform },
+          hasArb: agg.hasArb,
+          arbSpread: agg.arbSpread,
+          dataSource: "rest" as const,
+        };
+      } catch {
+        return {
+          globalEventId: event.globalEventId,
+          question: event.question,
+          platforms: event.platforms.map(p => p.platform),
+          yes: { bestAsk: null, bestAskPlatform: null },
+          no: { bestAsk: null, bestAskPlatform: null },
+          hasArb: false,
+          arbSpread: undefined,
+          dataSource: "none" as const,
+        };
+      }
+    }));
+
+    res.json({ count: results.length, updatedAt: Date.now(), markets: results });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/orderbook/:globalEventId — full aggregated orderbook with arb detection
 app.get("/api/orderbook/:globalEventId", async (req, res) => {
   try {
     const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
@@ -77,8 +166,18 @@ app.get("/api/orderbook/:globalEventId", async (req, res) => {
       return;
     }
 
+    // Use WS cache if any non-Opinion platform has fresh data
+    const allFresh = event.platforms.some(p =>
+      p.platform !== "opinion" && priceFeed.isFresh(p.yesTokenId, 60_000),
+    );
+    if (allFresh) {
+      const agg = buildAggFromCache(event, priceFeed);
+      res.json({ ...agg, dataSource: "ws" });
+      return;
+    }
+
     const aggregated = await aggregateOrderbooks(event, adaptersMap);
-    res.json(aggregated);
+    res.json({ ...aggregated, dataSource: "rest" });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -190,34 +289,51 @@ async function boot() {
   const db = await connectDB(process.env.MONGODB_URI!);
   await ensureIndexes(db);
 
-  // Initial sync
-  console.log("\nSyncing markets from all platforms...");
+  // FIX 1: Start WS feed FIRST using whatever is already in DB,
+  // so it begins warming up in parallel with the REST sync below.
+  const existingEvents = await getActiveEvents(db);
+  if (existingEvents.length > 0) {
+    priceFeed.start(
+      existingEvents.flatMap(e => e.platforms.map(p => ({
+        platform: p.platform as any,
+        marketId: p.marketId,
+        yesTokenId: p.yesTokenId,
+        noTokenId: p.noTokenId,
+      }))),
+      { opinion: process.env.OPINIONLABS_API_KEY! },
+    );
+    console.log(`✓ WS price feed started early — ${existingEvents.length} markets from DB cache`);
+  }
+
+  // FIX 2: Sync markets (REST calls to all platforms) — WS already warming in background.
+  // FIX 2: Removed arb scan — it burns Opinion rate limit with parallel REST calls on startup.
+  console.log("Syncing markets from all platforms...");
   const result = await matchAndSyncEvents(db, adaptersList);
   console.log(`✓ Synced: ${result.total} events (${result.created} new, ${result.updated} cross-platform)`);
 
-  // Show cross-platform matches
-  const events = await getActiveEvents(db);
-  const multiPlatform = events.filter((e) => e.platforms.length > 1);
-  if (multiPlatform.length > 0) {
-    console.log(`\n=== Cross-Platform Matches (${multiPlatform.length}) ===`);
-    for (const e of multiPlatform.slice(0, 5)) {
-      const platforms = e.platforms.map((p) => p.platform).join(" + ");
-      console.log(`  "${e.question}" → [${platforms}]`);
+  // Subscribe any newly synced markets to the WS feed without restarting
+  if (result.created > 0) {
+    const freshEvents = await getActiveEvents(db);
+    const existingIds = new Set(existingEvents.map(e => e.globalEventId));
+    const newSubs = freshEvents
+      .filter(e => !existingIds.has(e.globalEventId))
+      .flatMap(e => e.platforms.map(p => ({
+        platform: p.platform as any,
+        marketId: p.marketId,
+        yesTokenId: p.yesTokenId,
+        noTokenId: p.noTokenId,
+      })));
+    if (newSubs.length > 0) {
+      priceFeed.addSubscriptions(newSubs);
+      console.log(`✓ WS feed: added ${newSubs.length} new market subscriptions`);
     }
   }
 
-  // Check for arb opportunities on cross-platform events
+  const multiPlatform = (await getActiveEvents(db)).filter(e => e.platforms.length > 1);
   if (multiPlatform.length > 0) {
-    console.log("\nScanning for arb opportunities...");
-    for (const e of multiPlatform.slice(0, 3)) {
-      try {
-        const agg = await aggregateOrderbooks(e, adaptersMap);
-        if (agg.hasArb) {
-          console.log(`  🟢 ARB: "${e.question}" — spread: ${(agg.arbSpread! * 100).toFixed(1)}%`);
-        }
-      } catch {
-        // skip failed fetches
-      }
+    console.log(`\n=== Cross-Platform Matches (${multiPlatform.length}) ===`);
+    for (const e of multiPlatform.slice(0, 5)) {
+      console.log(`  "${e.question}" → [${e.platforms.map(p => p.platform).join(" + ")}]`);
     }
   }
 

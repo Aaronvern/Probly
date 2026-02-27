@@ -8,6 +8,7 @@
 
 import type { PlatformAdapter, UnifiedOrderbook, AggregatedOrderbook, Platform, Outcome } from "../types.js";
 import type { GlobalEvent } from "../db/events.js";
+import type { PriceFeed } from "../ws/price-feed.js";
 
 export interface AggregatedEventView {
   globalEventId: string;
@@ -68,6 +69,42 @@ export async function aggregateOrderbooks(
     no,
     hasArb,
     arbSpread,
+  };
+}
+
+/**
+ * Build an aggregated event view from the in-memory WS price cache.
+ * Falls back gracefully if a token has no cached price.
+ */
+export function buildAggFromCache(event: GlobalEvent, feed: PriceFeed): AggregatedEventView {
+  let yesBestAsk: { price: number; platform: Platform } = { price: 1, platform: "opinion" };
+  let yesBestBid: { price: number; platform: Platform } = { price: 0, platform: "opinion" };
+  let noBestAsk: { price: number; platform: Platform } = { price: 1, platform: "opinion" };
+  let noBestBid: { price: number; platform: Platform } = { price: 0, platform: "opinion" };
+
+  for (const p of event.platforms) {
+    const yes = feed.get(p.yesTokenId);
+    const no = feed.get(p.noTokenId);
+    if (yes) {
+      if (yes.bestAsk < yesBestAsk.price) yesBestAsk = { price: yes.bestAsk, platform: p.platform };
+      if (yes.bestBid > yesBestBid.price) yesBestBid = { price: yes.bestBid, platform: p.platform };
+    }
+    if (no) {
+      if (no.bestAsk < noBestAsk.price) noBestAsk = { price: no.bestAsk, platform: p.platform };
+      if (no.bestBid > noBestBid.price) noBestBid = { price: no.bestBid, platform: p.platform };
+    }
+  }
+
+  const totalCost = yesBestAsk.price + noBestAsk.price;
+  const hasArb = totalCost < 0.99;
+  return {
+    globalEventId: event.globalEventId,
+    question: event.question,
+    platformCount: event.platforms.length,
+    yes: { globalEventId: event.globalEventId, outcome: "YES", books: [], bestAsk: yesBestAsk, bestBid: yesBestBid },
+    no: { globalEventId: event.globalEventId, outcome: "NO", books: [], bestAsk: noBestAsk, bestBid: noBestBid },
+    hasArb,
+    arbSpread: hasArb ? 1 - totalCost : undefined,
   };
 }
 
