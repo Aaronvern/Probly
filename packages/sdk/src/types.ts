@@ -77,6 +77,8 @@ export interface RouteResult {
 export interface RouteLeg {
   platform: Platform;
   tokenId: string;
+  /** Platform-native market identifier (e.g. Opinion marketId number) */
+  marketId?: string;
   side: Side;
   amount: number; // USDT allocated to this leg
   expectedPrice: number;

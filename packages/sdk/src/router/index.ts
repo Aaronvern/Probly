@@ -10,8 +10,7 @@
  *  - Otherwise → inverse-price-weighted split across cheapest platforms
  */
 
-import { Client as OpinionClient } from "@opinion-labs/opinion-clob-sdk";
-import { OrderSide, OrderType } from "@opinion-labs/opinion-clob-sdk/dist/models/enums.js";
+import { Client as OpinionClient, OrderSide, OrderType } from "@opinion-labs/opinion-clob-sdk";
 import type {
   PlatformAdapter,
   TradeIntent,
@@ -76,12 +75,12 @@ export class SmartOrderRouter {
         if (!tokenId) return null;
 
         const price = await adapter.getPrice(tokenId, side);
-        return { platform: mapping.platform, tokenId, price };
+        return { platform: mapping.platform, tokenId, marketId: mapping.marketId, price };
       }),
     );
 
     // Collect valid price quotes
-    const quotes: { platform: Platform; tokenId: string; price: number }[] = [];
+    const quotes: { platform: Platform; tokenId: string; marketId: string; price: number }[] = [];
     for (const r of priceResults) {
       if (r.status === "fulfilled" && r.value && r.value.price > 0) {
         quotes.push(r.value);
@@ -138,7 +137,7 @@ export class SmartOrderRouter {
   // ---------------------------------------------------------------------------
 
   private computeSplit(
-    quotes: { platform: Platform; tokenId: string; price: number }[],
+    quotes: { platform: Platform; tokenId: string; marketId: string; price: number }[],
     amount: number,
     side: "BUY" | "SELL",
   ): RouteLeg[] {
@@ -156,7 +155,6 @@ export class SmartOrderRouter {
     }
 
     // Otherwise: inverse-price-weighted split across all platforms
-    // (cheaper price → larger weight → more allocation)
     const weights = quotes.map((q) => 1 / q.price);
     const totalWeight = weights.reduce((s, w) => s + w, 0);
 
@@ -167,12 +165,13 @@ export class SmartOrderRouter {
   }
 
   private makeLeg(
-    q: { platform: Platform; tokenId: string; price: number },
+    q: { platform: Platform; tokenId: string; marketId: string; price: number },
     amount: number,
   ): RouteLeg {
     return {
       platform: q.platform,
       tokenId: q.tokenId,
+      marketId: q.marketId,
       side: "BUY",
       amount,
       expectedPrice: q.price,
@@ -218,7 +217,7 @@ export class SmartOrderRouter {
       });
 
       const result = await client.placeOrder({
-        marketId: Number(leg.tokenId.split("-")[0] ?? 0), // tokenId format: marketId-outcome
+        marketId: Number(leg.marketId ?? 0),
         tokenId: leg.tokenId,
         side: leg.side === "BUY" ? OrderSide.BUY : OrderSide.SELL,
         orderType: OrderType.MARKET_ORDER,
