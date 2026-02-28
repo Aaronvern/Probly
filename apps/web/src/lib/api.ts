@@ -129,6 +129,60 @@ export async function getFollowing(address: string): Promise<string[]> {
   return res.json();
 }
 
+// ── OTC Cash-Out ──────────────────────────────────────────────
+
+export interface OTCQuote {
+  globalEventId: string;
+  question: string;
+  outcome: string;
+  shares: number;
+  fairPrice: number;
+  discountedPrice: number;
+  discountPct: number;
+  usdtOut: number;
+  discount: number;
+  poolAddress: string;
+}
+
+export interface OTCCashOutResult {
+  success: boolean;
+  globalEventId: string;
+  outcome: string;
+  shares: number;
+  fairPrice: number;
+  discountedPrice: number;
+  usdtOut: number;
+  txHash: string;
+  poolAddress: string;
+  simulated: boolean;
+}
+
+export async function otcQuote(globalEventId: string, outcome: string, shares: number): Promise<OTCQuote> {
+  const res = await fetch(`${API}/api/otc/quote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ globalEventId, outcome, shares }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: "OTC quote failed" }));
+    throw new Error(data.error || "OTC quote failed");
+  }
+  return res.json();
+}
+
+export async function otcCashOut(globalEventId: string, outcome: string, shares: number, minUsdt?: number): Promise<OTCCashOutResult> {
+  const res = await fetch(`${API}/api/otc/cashout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ globalEventId, outcome, shares, minUsdt }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: "OTC cash-out failed" }));
+    throw new Error(data.error || "OTC cash-out failed");
+  }
+  return res.json();
+}
+
 export interface PortfolioPosition {
   globalEventId: string;
   question: string;

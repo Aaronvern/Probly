@@ -425,6 +425,138 @@ app.get("/api/portfolio/:address", async (req, res) => {
   }
 });
 
+// ── OTC Cash-Out ─────────────────────────────────────────────────────────────
+
+const OTC_POOL_ADDRESS = process.env.OTC_POOL_ADDRESS!;
+const OTC_DISCOUNT_BPS = 500; // 5%
+const BPS_DENOM = 10_000;
+
+// POST /api/otc/quote — get OTC cash-out price at 5% discount
+// Body: { globalEventId, outcome: "YES"|"NO", shares: number }
+app.post("/api/otc/quote", async (req, res) => {
+  try {
+    const { globalEventId, outcome, shares } = req.body;
+    if (!globalEventId || !outcome || !shares) {
+      res.status(400).json({ error: "Missing required fields: globalEventId, outcome, shares" });
+      return;
+    }
+
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const event = await getEventById(db, globalEventId);
+    if (!event) {
+      res.status(404).json({ error: "Event not found" });
+      return;
+    }
+
+    // Get best current price for this outcome from aggregated orderbook
+    const hasWsData = event.platforms.some((p: TokenMapping) =>
+      p.platform !== "opinion" && priceFeed.isFresh(p.yesTokenId, 60_000),
+    );
+    let fairPrice: number | null = null;
+    if (hasWsData) {
+      const agg = buildAggFromCache(event, priceFeed);
+      fairPrice = outcome === "YES" ? agg.yes.bestAsk?.price ?? null : agg.no.bestAsk?.price ?? null;
+    } else {
+      const fallbackMap = new Map([...adaptersMap].filter(([k]) => k !== "opinion"));
+      try {
+        const agg = await aggregateOrderbooks(event, fallbackMap);
+        fairPrice = outcome === "YES" ? agg.yes.bestAsk?.price ?? null : agg.no.bestAsk?.price ?? null;
+      } catch { /* no price available */ }
+    }
+
+    if (fairPrice === null || fairPrice <= 0) {
+      res.status(400).json({ error: "No fair price available for this outcome" });
+      return;
+    }
+
+    const discountedPrice = fairPrice * (BPS_DENOM - OTC_DISCOUNT_BPS) / BPS_DENOM;
+    const usdtOut = shares * discountedPrice;
+    const discount = shares * fairPrice - usdtOut;
+
+    res.json({
+      globalEventId,
+      question: event.question,
+      outcome,
+      shares,
+      fairPrice,
+      discountedPrice,
+      discountPct: OTC_DISCOUNT_BPS / 100,
+      usdtOut: Math.round(usdtOut * 100) / 100,
+      discount: Math.round(discount * 100) / 100,
+      poolAddress: OTC_POOL_ADDRESS,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/otc/cashout — execute OTC cash-out (simulated on testnet)
+// Body: { globalEventId, outcome: "YES"|"NO", shares: number, minUsdt?: number }
+app.post("/api/otc/cashout", async (req, res) => {
+  try {
+    const { globalEventId, outcome, shares, minUsdt } = req.body;
+    if (!globalEventId || !outcome || !shares) {
+      res.status(400).json({ error: "Missing required fields: globalEventId, outcome, shares" });
+      return;
+    }
+
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const event = await getEventById(db, globalEventId);
+    if (!event) {
+      res.status(404).json({ error: "Event not found" });
+      return;
+    }
+
+    // Compute payout (same logic as /quote)
+    const hasWsData = event.platforms.some((p: TokenMapping) =>
+      p.platform !== "opinion" && priceFeed.isFresh(p.yesTokenId, 60_000),
+    );
+    let fairPrice: number | null = null;
+    if (hasWsData) {
+      const agg = buildAggFromCache(event, priceFeed);
+      fairPrice = outcome === "YES" ? agg.yes.bestAsk?.price ?? null : agg.no.bestAsk?.price ?? null;
+    } else {
+      const fallbackMap = new Map([...adaptersMap].filter(([k]) => k !== "opinion"));
+      try {
+        const agg = await aggregateOrderbooks(event, fallbackMap);
+        fairPrice = outcome === "YES" ? agg.yes.bestAsk?.price ?? null : agg.no.bestAsk?.price ?? null;
+      } catch { /* no price */ }
+    }
+
+    if (fairPrice === null || fairPrice <= 0) {
+      res.status(400).json({ error: "No fair price available" });
+      return;
+    }
+
+    const discountedPrice = fairPrice * (BPS_DENOM - OTC_DISCOUNT_BPS) / BPS_DENOM;
+    const usdtOut = Math.round(shares * discountedPrice * 100) / 100;
+
+    if (minUsdt && usdtOut < minUsdt) {
+      res.status(400).json({ error: "Slippage exceeded: payout below minUsdt" });
+      return;
+    }
+
+    // Simulated execution against OTCPool on testnet
+    // In production this would call OTCPool.cashOut() via Biconomy session key
+    const txHash = "0x" + [...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+
+    res.json({
+      success: true,
+      globalEventId,
+      outcome,
+      shares,
+      fairPrice,
+      discountedPrice,
+      usdtOut,
+      txHash,
+      poolAddress: OTC_POOL_ADDRESS,
+      simulated: true,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/sync — trigger market sync across all platforms
 app.post("/api/sync", async (_req, res) => {
   try {
