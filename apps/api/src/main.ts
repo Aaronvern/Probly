@@ -75,9 +75,17 @@ app.get("/api/markets", async (_req, res) => {
   }
 });
 
+// In-memory cache for /api/prices — 5s TTL keeps UI stable without going stale
+let pricesCache: { data: object; ts: number } | null = null;
+const PRICES_CACHE_TTL = 5_000;
+
 // GET /api/prices — all active markets with best prices from WS cache (instant)
-// Falls back to REST for tokens not yet in cache. Frontend should poll this at ~2s interval.
+// Falls back to REST for tokens not yet in cache. Frontend polls at 10s interval.
 app.get("/api/prices", async (_req, res) => {
+  if (pricesCache && Date.now() - pricesCache.ts < PRICES_CACHE_TTL) {
+    res.json(pricesCache.data);
+    return;
+  }
   try {
     const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
     const events = await getActiveEvents(db);
@@ -177,7 +185,9 @@ app.get("/api/prices", async (_req, res) => {
       }
     }));
 
-    res.json({ count: results.length, updatedAt: Date.now(), markets: results });
+    const payload = { count: results.length, updatedAt: Date.now(), markets: results };
+    pricesCache = { data: payload, ts: Date.now() };
+    res.json(payload);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
