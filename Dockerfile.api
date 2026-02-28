@@ -1,0 +1,27 @@
+# Probly API — Node.js backend
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+
+# Install dependencies
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json apps/api/
+COPY apps/mcp-server/package.json apps/mcp-server/
+COPY apps/mock-api/package.json apps/mock-api/
+COPY apps/web/package.json apps/web/
+COPY packages/sdk/package.json packages/sdk/
+COPY packages/contracts/package.json packages/contracts/
+RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install --no-frozen-lockfile
+
+# Runner — copy everything + node_modules
+FROM base AS runner
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+ENV NODE_ENV=production
+ENV PORT=3001
+EXPOSE 3001
+
+CMD ["node", "--import", "tsx", "apps/api/src/main.ts"]

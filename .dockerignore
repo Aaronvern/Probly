@@ -4,8 +4,10 @@ dist
 build
 .git
 .env
-*.md
+.env.*
 docs/
-packages/contracts/
-apps/mcp-server/
-apps/mock-api/
+
+# Exclude heavy artifacts but keep package.json for workspace resolution
+packages/contracts/artifacts
+packages/contracts/cache
+packages/contracts/typechain-types
