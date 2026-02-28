@@ -2,7 +2,7 @@
   <h1 align="center">⚡ Probly — Prediction Market Super-Aggregator</h1>
   <p align="center"><b>The Bloomberg Terminal for On-Chain Prediction Markets</b></p>
   <p align="center">
-    <a href="#live-deployment">Live on opBNB Testnet + BSC Mainnet</a> · 
+    <a href="#live-deployment">Live on BNB Testnet + BSC Mainnet</a> · 
     <a href="#demo">Demo Video</a> · 
     <a href="#architecture">Architecture</a> · 
     <a href="#contracts">Contracts</a>
