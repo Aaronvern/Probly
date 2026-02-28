@@ -1,11 +1,13 @@
 FROM node:20-slim
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 WORKDIR /app
 
-COPY . .
-RUN pnpm install --no-frozen-lockfile
+# Copy only the web app — no monorepo/pnpm needed
+COPY apps/web/package.json ./
+RUN npm install
 
-# Next.js needs env vars at build time for NEXT_PUBLIC_*
+COPY apps/web/ ./
+
+# NEXT_PUBLIC_ vars baked in at build time
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_BICONOMY_API_KEY
 ARG NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
@@ -13,7 +15,6 @@ ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_PUBLIC_BICONOMY_API_KEY=${NEXT_PUBLIC_BICONOMY_API_KEY}
 ENV NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID}
 
-WORKDIR /app/apps/web
 RUN npx next build
 
 ENV NODE_ENV=production
@@ -21,4 +22,4 @@ ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 EXPOSE 3000
 
-CMD ["npx", "next", "start", "-p", "3000"]
+CMD ["npm", "start"]
