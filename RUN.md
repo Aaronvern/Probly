@@ -4,7 +4,8 @@
 
 - Node.js v18+
 - pnpm v9+
-- A `.env` file in the project root (see Environment Variables below)
+- MongoDB (Atlas or local instance)
+- A `.env` file in the project root (see below)
 
 ## Install Dependencies
 
@@ -17,14 +18,27 @@ pnpm install
 Create a `.env` file in the project root with:
 
 ```
+# Platform API keys
 OPINIONLABS_API_KEY=
 OPINIONLABS_EOA=
 PREDICTFUN_API_KEY=
 PROBABLE_API_KEY=
 PROBABLE_SECRET=
 PROBABLE_PASSPHRASE=
+
+# Wallet
 PRIVATE_KEY=
+
+# RPC
 BSC_RPC_URL=
+
+# MongoDB
+MONGODB_URI=mongodb://localhost:27017/probly
+
+# Frontend
+NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_BICONOMY_API_KEY=
+NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
 ```
 
 ## One-Time Setup
@@ -37,50 +51,54 @@ pnpm run generate-probable-key
 
 ## Development
 
-### Start the API backend
+### Start the API backend (port 3001)
 
 ```bash
 pnpm run dev:api
 ```
 
-### Start the web frontend
+### Start the web frontend (port 3000)
 
 ```bash
 pnpm run dev:web
 ```
 
-### Start both at the same time (two terminals)
+### Start both (two terminals)
 
 ```bash
-# Terminal 1
+# Terminal 1 — API
 pnpm run dev:api
 
-# Terminal 2
+# Terminal 2 — Frontend
 pnpm run dev:web
 ```
 
 ## Smart Contracts (Hardhat)
 
-All contract commands run from `packages/contracts/`:
+Contracts live in `packages/contracts/`. Hardhat reads `.env` from the project root.
+
+Via Nx from the root:
 
 ```bash
 # Compile contracts
-cd packages/contracts && npx hardhat compile
+npx nx compile contracts
 
 # Run contract tests
-cd packages/contracts && npx hardhat test
-
-# Deploy to BSC Testnet
-cd packages/contracts && npx hardhat run scripts/deploy.js --network bscTestnet
-
-# Deploy to BSC Mainnet
-cd packages/contracts && npx hardhat run scripts/deploy.js --network bsc
+npx nx test contracts
 ```
 
-Or via Nx from the root:
+Or directly from the contracts directory:
 
 ```bash
-pnpm dlx nx test contracts
+cd packages/contracts
+npx hardhat compile
+npx hardhat test
+```
+
+## MCP Server
+
+```bash
+npx nx serve mcp-server
 ```
 
 ## Build
@@ -90,8 +108,8 @@ pnpm dlx nx test contracts
 pnpm run build
 
 # Build individual apps
-pnpm dlx nx build web
-pnpm dlx nx build api
+npx nx build web
+npx nx build api
 ```
 
 ## Test
@@ -101,8 +119,8 @@ pnpm dlx nx build api
 pnpm run test
 
 # Run tests for a specific package
-pnpm dlx nx test sdk
-pnpm dlx nx test contracts
+npx nx test contracts
+npx nx test api
 ```
 
 ## Lint
@@ -112,22 +130,16 @@ pnpm dlx nx test contracts
 pnpm run lint
 
 # Lint a specific app
-pnpm dlx nx lint web
-pnpm dlx nx lint api
-```
-
-## MCP Server
-
-```bash
-pnpm dlx nx serve mcp-server
+npx nx lint web
+npx nx lint api
 ```
 
 ## Production
 
 ```bash
-# Build the web app for production
-pnpm dlx nx build web
+# Build the web app
+npx nx build web
 
-# Start the production web server
+# Start production server
 cd apps/web && pnpm start
 ```
