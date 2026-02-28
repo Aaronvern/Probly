@@ -338,5 +338,5 @@ export async function matchAndSyncEvents(
     else created++;
   }
 
-  return { created, updated, total: groups.size };
+  return { created, updated, total: groups.length };
 }

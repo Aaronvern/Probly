@@ -28,7 +28,9 @@ import { ensureIndexes, getActiveEvents, getEventById } from "../../../packages/
 import { matchAndSyncEvents } from "../../../packages/sdk/src/matcher/index.js";
 import { aggregateOrderbooks, buildAggFromCache } from "../../../packages/sdk/src/aggregator/index.js";
 import { PriceFeed } from "../../../packages/sdk/src/ws/price-feed.js";
-import type { Platform, PlatformAdapter } from "../../../packages/sdk/src/types.js";
+import type { Platform, PlatformAdapter, RouteLeg } from "../../../packages/sdk/src/types.js";
+import type { GlobalEvent, TokenMapping } from "../../../packages/sdk/src/db/events.js";
+import type { ExecutionLeg } from "../../../packages/sdk/src/router/index.js";
 
 // ---------------------------------------------------------------------------
 // Init
@@ -91,8 +93,8 @@ server.tool(
       // Start WS price feed on first call (subscribes to all active markets)
       if (priceFeed.size === 0) {
         priceFeed.start(
-          events.flatMap(e => e.platforms.map(p => ({
-            platform: p.platform as any,
+          events.flatMap((e: GlobalEvent) => e.platforms.map((p: TokenMapping) => ({
+            platform: p.platform as Platform,
             marketId: p.marketId,
             yesTokenId: p.yesTokenId,
             noTokenId: p.noTokenId,
@@ -105,7 +107,7 @@ server.tool(
       for (const event of events.slice(0, Math.min(events.length, 30))) {
         try {
           // Fast path: read from WS price cache if any non-Opinion platform has fresh data
-          const hasWsData = event.platforms.some(p =>
+          const hasWsData = event.platforms.some((p: TokenMapping) =>
             p.platform !== "opinion" && priceFeed.isFresh(p.yesTokenId),
           );
           let agg;
@@ -120,7 +122,7 @@ server.tool(
           results.push({
             globalEventId: event.globalEventId,
             question: event.question,
-            platforms: event.platforms.map((p: any) => p.platform),
+            platforms: event.platforms.map((p: TokenMapping) => p.platform),
             yes: {
               bestAsk: agg.yes.bestAsk?.price,
               bestAskPlatform: agg.yes.bestAsk?.platform,
@@ -185,7 +187,7 @@ server.tool(
             question: event.question,
             intent: { outcome, side, amount },
             route: {
-              legs: route.legs.map(l => ({
+              legs: route.legs.map((l: RouteLeg) => ({
                 platform: l.platform,
                 amount: l.amount,
                 allocationPct: `${((l.amount / route.totalCost) * 100).toFixed(1)}%`,
@@ -236,7 +238,7 @@ server.tool(
             question: event.question,
             success: result.success,
             totalSpent: result.totalSpent,
-            legs: result.legs.map(l => ({
+            legs: result.legs.map((l: ExecutionLeg) => ({
               platform: l.platform,
               amount: l.amount,
               expectedPrice: l.expectedPrice,
@@ -267,9 +269,9 @@ server.tool(
         adapters.map(a => a.getPositions(wallet_address)),
       );
 
-      const positions = results.flatMap((r, i) => {
+      const positions = results.flatMap((r: PromiseSettledResult<any[]>, i: number) => {
         if (r.status !== "fulfilled") return [];
-        return r.value.map(p => ({ ...p, platform: adapters[i].platform }));
+        return r.value.map((p: any) => ({ ...p, platform: adapters[i].platform }));
       });
 
       const totalPnl = positions.reduce((s, p) => s + p.pnl, 0);
@@ -281,7 +283,7 @@ server.tool(
             wallet: wallet_address,
             totalPositions: positions.length,
             totalPnl: totalPnl.toFixed(2),
-            positions: positions.map(p => ({
+            positions: positions.map((p: any) => ({
               platform: p.platform,
               question: p.question,
               outcome: p.outcome,

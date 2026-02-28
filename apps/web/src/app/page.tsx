@@ -63,7 +63,7 @@ export default function MatrixTerminal() {
           <StatCard
             label="Best Arb"
             value={arbMarkets.length > 0 ? `+${((arbMarkets[0]?.arbSpread ?? 0) * 100).toFixed(1)}¢` : "—"}
-            sub={arbMarkets[0]?.question?.slice(0, 20) + "..." ?? "none"}
+            sub={(arbMarkets[0]?.question?.slice(0, 20) ?? "none") + "..."}
             color="text-terminal-green"
           />
         </div>

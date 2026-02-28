@@ -51,7 +51,7 @@ function toMarketId(globalEventId: string): bigint {
 
 export async function createSmartAccount(walletClient: WalletClient): Promise<BiconomySmartAccountV2> {
   const smartAccount = await createSmartAccountClient({
-    signer: walletClient as any,
+    signer: walletClient,
     bundlerUrl: BUNDLER_URL_MAINNET,
     paymasterUrl: PAYMASTER_URL_MAINNET,
     rpcUrl: "https://bsc-dataseed.binance.org",
@@ -77,7 +77,7 @@ export async function executeTradeViaSmartAccount(
   amountUSDT = 10,
 ): Promise<TradeResult> {
   const smartAccount = await createSmartAccountClient({
-    signer: walletClient as any,
+    signer: walletClient,
     bundlerUrl: BUNDLER_URL_TESTNET,
     paymasterUrl: PAYMASTER_URL_TESTNET,
     rpcUrl: "https://data-seed-prebsc-1-s1.binance.org:8545",

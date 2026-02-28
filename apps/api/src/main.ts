@@ -16,7 +16,9 @@ import { matchAndSyncEvents } from "../../../packages/sdk/src/matcher/index.js";
 import { aggregateOrderbooks, buildAggFromCache } from "../../../packages/sdk/src/aggregator/index.js";
 import { PriceFeed } from "../../../packages/sdk/src/ws/price-feed.js";
 import { SmartOrderRouter } from "../../../packages/sdk/src/router/index.js";
-import type { Platform, PlatformAdapter, TradeIntent } from "../../../packages/sdk/src/types.js";
+import type { Platform, PlatformAdapter, TradeIntent, RouteLeg } from "../../../packages/sdk/src/types.js";
+import type { GlobalEvent, TokenMapping } from "../../../packages/sdk/src/db/events.js";
+import type { ExecutionLeg } from "../../../packages/sdk/src/router/index.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -55,13 +57,13 @@ app.get("/api/markets", async (_req, res) => {
     const events = await getActiveEvents(db);
     res.json({
       count: events.length,
-      events: events.map((e) => ({
+      events: events.map((e: GlobalEvent) => ({
         globalEventId: e.globalEventId,
         question: e.question,
         slug: e.slug,
         status: e.status,
         platformCount: e.platforms.length,
-        platforms: e.platforms.map((p) => p.platform),
+        platforms: e.platforms.map((p: TokenMapping) => p.platform),
         tags: e.tags,
         expiresAt: e.expiresAt,
       })),
@@ -79,17 +81,17 @@ app.get("/api/prices", async (_req, res) => {
     const events = await getActiveEvents(db);
     const CACHE_MAX_AGE = 60_000;
 
-    const results = await Promise.all(events.map(async (event) => {
+    const results = await Promise.all(events.map(async (event: GlobalEvent) => {
       // Use WS cache if ANY non-Opinion platform has fresh data.
       // buildAggFromCache handles missing platforms gracefully (defaults to ask=1, bid=0).
-      const hasWsData = event.platforms.some(p =>
+      const hasWsData = event.platforms.some((p: TokenMapping) =>
         p.platform !== "opinion" && priceFeed.isFresh(p.yesTokenId, CACHE_MAX_AGE),
       );
 
       if (hasWsData) {
         const agg = buildAggFromCache(event, priceFeed);
         const platformPrices: Record<string, { yes: number | null; no: number | null }> = {};
-        for (const p of event.platforms) {
+        for (const p of event.platforms as TokenMapping[]) {
           const yesCache = priceFeed.get(p.yesTokenId);
           const noCache = priceFeed.get(p.noTokenId);
           platformPrices[p.platform] = {
@@ -100,7 +102,7 @@ app.get("/api/prices", async (_req, res) => {
         return {
           globalEventId: event.globalEventId,
           question: event.question,
-          platforms: event.platforms.map(p => p.platform),
+          platforms: event.platforms.map((p: TokenMapping) => p.platform),
           yes: { bestAsk: agg.yes.bestAsk?.price, bestAskPlatform: agg.yes.bestAsk?.platform },
           no: { bestAsk: agg.no.bestAsk?.price, bestAskPlatform: agg.no.bestAsk?.platform },
           hasArb: agg.hasArb,
@@ -113,7 +115,7 @@ app.get("/api/prices", async (_req, res) => {
       // FIX 3: REST fallback — only for Predict/Probable (they handle parallel calls fine).
       // Opinion is event-driven WS only; skip its REST to avoid 429 storms.
       // Opinion-only markets show as "pending" until WS fires a trade event.
-      const nonOpinionPlatforms = event.platforms.filter(p => p.platform !== "opinion");
+      const nonOpinionPlatforms = event.platforms.filter((p: TokenMapping) => p.platform !== "opinion");
       if (nonOpinionPlatforms.length === 0) {
         // Opinion-only market: return last WS price if any, else pending
         const cachedAgg = buildAggFromCache(event, priceFeed);
@@ -121,7 +123,7 @@ app.get("/api/prices", async (_req, res) => {
         return {
           globalEventId: event.globalEventId,
           question: event.question,
-          platforms: event.platforms.map(p => p.platform),
+          platforms: event.platforms.map((p: TokenMapping) => p.platform),
           yes: { bestAsk: hasAnyPrice ? cachedAgg.yes.bestAsk?.price : null, bestAskPlatform: hasAnyPrice ? cachedAgg.yes.bestAsk?.platform : null },
           no: { bestAsk: hasAnyPrice ? cachedAgg.no.bestAsk?.price : null, bestAskPlatform: hasAnyPrice ? cachedAgg.no.bestAsk?.platform : null },
           hasArb: false,
@@ -151,7 +153,7 @@ app.get("/api/prices", async (_req, res) => {
         return {
           globalEventId: event.globalEventId,
           question: event.question,
-          platforms: event.platforms.map(p => p.platform),
+          platforms: event.platforms.map((p: TokenMapping) => p.platform),
           yes: { bestAsk: agg.yes.bestAsk?.price, bestAskPlatform: agg.yes.bestAsk?.platform },
           no: { bestAsk: agg.no.bestAsk?.price, bestAskPlatform: agg.no.bestAsk?.platform },
           hasArb: agg.hasArb,
@@ -163,7 +165,7 @@ app.get("/api/prices", async (_req, res) => {
         return {
           globalEventId: event.globalEventId,
           question: event.question,
-          platforms: event.platforms.map(p => p.platform),
+          platforms: event.platforms.map((p: TokenMapping) => p.platform),
           yes: { bestAsk: null, bestAskPlatform: null },
           no: { bestAsk: null, bestAskPlatform: null },
           hasArb: false,
@@ -190,7 +192,7 @@ app.get("/api/orderbook/:globalEventId", async (req, res) => {
     }
 
     // Use WS cache if any non-Opinion platform has fresh data
-    const allFresh = event.platforms.some(p =>
+    const allFresh = event.platforms.some((p: TokenMapping) =>
       p.platform !== "opinion" && priceFeed.isFresh(p.yesTokenId, 60_000),
     );
     if (allFresh) {
@@ -235,7 +237,7 @@ app.post("/api/trade/quote", async (req, res) => {
       question: event.question,
       intent,
       route: {
-        legs: route.legs.map((l) => ({
+        legs: route.legs.map((l: RouteLeg) => ({
           platform: l.platform,
           tokenId: l.tokenId,
           amount: l.amount,
@@ -280,7 +282,7 @@ app.post("/api/trade/execute", async (req, res) => {
       question: event.question,
       success: result.success,
       totalSpent: result.totalSpent,
-      legs: result.legs.map((l) => ({
+      legs: result.legs.map((l: ExecutionLeg) => ({
         platform: l.platform,
         tokenId: l.tokenId,
         amount: l.amount,
@@ -445,8 +447,8 @@ async function boot() {
   const existingEvents = await getActiveEvents(db);
   if (existingEvents.length > 0) {
     priceFeed.start(
-      existingEvents.flatMap(e => e.platforms.map(p => ({
-        platform: p.platform as any,
+      existingEvents.flatMap((e: GlobalEvent) => e.platforms.map((p: TokenMapping) => ({
+        platform: p.platform as Platform,
         marketId: p.marketId,
         yesTokenId: p.yesTokenId,
         noTokenId: p.noTokenId,
@@ -465,11 +467,11 @@ async function boot() {
   // Subscribe any newly synced markets to the WS feed without restarting
   if (result.created > 0) {
     const freshEvents = await getActiveEvents(db);
-    const existingIds = new Set(existingEvents.map(e => e.globalEventId));
+    const existingIds = new Set(existingEvents.map((e: GlobalEvent) => e.globalEventId));
     const newSubs = freshEvents
-      .filter(e => !existingIds.has(e.globalEventId))
-      .flatMap(e => e.platforms.map(p => ({
-        platform: p.platform as any,
+      .filter((e: GlobalEvent) => !existingIds.has(e.globalEventId))
+      .flatMap((e: GlobalEvent) => e.platforms.map((p: TokenMapping) => ({
+        platform: p.platform as Platform,
         marketId: p.marketId,
         yesTokenId: p.yesTokenId,
         noTokenId: p.noTokenId,
@@ -480,11 +482,11 @@ async function boot() {
     }
   }
 
-  const multiPlatform = (await getActiveEvents(db)).filter(e => e.platforms.length > 1);
+  const multiPlatform = (await getActiveEvents(db)).filter((e: GlobalEvent) => e.platforms.length > 1);
   if (multiPlatform.length > 0) {
     console.log(`\n=== Cross-Platform Matches (${multiPlatform.length}) ===`);
     for (const e of multiPlatform.slice(0, 5)) {
-      console.log(`  "${e.question}" → [${e.platforms.map(p => p.platform).join(" + ")}]`);
+      console.log(`  "${e.question}" → [${e.platforms.map((p: TokenMapping) => p.platform).join(" + ")}]`);
     }
   }
 

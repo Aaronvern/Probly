@@ -13,6 +13,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "composite": true,
+    "baseUrl": ".",
     "paths": {
       "@probly/sdk": ["packages/sdk/src/index.ts"],
       "@probly/sdk/*": ["packages/sdk/src/*"],

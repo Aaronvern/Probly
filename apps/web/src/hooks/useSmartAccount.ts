@@ -51,6 +51,9 @@ export function useSmartAccount() {
     setSession(null);
   }, []);
 
+  const isActive = !!session && Date.now() < session.expiresAt;
+  const hoursLeft = session ? Math.max(0, Math.floor((session.expiresAt - Date.now()) / 3600000)) : 0;
+
   /**
    * Execute a trade via Biconomy Smart Account on BSC Testnet.
    * Batches approve + executeBestTrade in one UserOp — no wallet popup.
@@ -62,11 +65,7 @@ export function useSmartAccount() {
   ): Promise<TradeResult | null> => {
     if (!walletClient || !isActive) return null;
     return executeTradeViaSmartAccount(walletClient, globalEventId, outcome, amountUSDT);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walletClient, session?.expiresAt]);
-
-  const isActive = !!session && Date.now() < session.expiresAt;
-  const hoursLeft = session ? Math.max(0, Math.floor((session.expiresAt - Date.now()) / 3600000)) : 0;
+  }, [walletClient, isActive]);
 
   return { session, isActive, hoursLeft, activate, deactivate, loading, error, executeSmartTrade };
 
