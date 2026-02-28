@@ -7,7 +7,7 @@
   "types": "src/index.ts",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
-    "@opinion-labs/opinion-clob-sdk": "latest",
+    "@opinion-labs/opinion-clob-sdk": "^0.5.3",
     "@predictdotfun/sdk": "latest",
     "@prob/clob": "^0.5.0",
     "@prob/core": "^0.3.0",

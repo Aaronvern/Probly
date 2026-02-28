@@ -193,7 +193,7 @@ importers:
         specifier: ^0.78.0
         version: 0.78.0(zod@3.25.76)
       '@opinion-labs/opinion-clob-sdk':
-        specifier: latest
+        specifier: ^0.5.3
         version: 0.5.3(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)(zod@3.25.76)
       '@predictdotfun/sdk':
         specifier: latest
