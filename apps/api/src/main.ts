@@ -638,6 +638,24 @@ async function boot() {
   ghostEngine.start();
   console.log("✓ Ghost Market Engine started");
 
+  // Re-sync markets every 30 minutes to pick up new listings
+  setInterval(async () => {
+    console.log("[Re-sync] Syncing markets...");
+    const r = await matchAndSyncEvents(db, adaptersList);
+    console.log(`[Re-sync] Done: ${r.total} events (${r.created} new, ${r.updated} cross-platform)`);
+    if (r.created > 0) {
+      const allEvents = await getActiveEvents(db);
+      priceFeed.addSubscriptions(
+        allEvents.flatMap(e => e.platforms.map(p => ({
+          platform: p.platform as any,
+          marketId: p.marketId,
+          yesTokenId: p.yesTokenId,
+          noTokenId: p.noTokenId,
+        })))
+      );
+    }
+  }, 30 * 60 * 1000);
+
   console.log(`\nProbly API ready on http://localhost:${PORT}\n`);
 }
 
