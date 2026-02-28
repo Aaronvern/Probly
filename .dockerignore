@@ -1,0 +1,11 @@
+node_modules
+.next
+dist
+build
+.git
+.env
+*.md
+docs/
+packages/contracts/
+apps/mcp-server/
+apps/mock-api/
