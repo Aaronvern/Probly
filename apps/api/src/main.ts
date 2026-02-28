@@ -17,6 +17,7 @@ import { aggregateOrderbooks, buildAggFromCache } from "../../../packages/sdk/sr
 import { PriceFeed } from "../../../packages/sdk/src/ws/price-feed.js";
 import { SmartOrderRouter } from "../../../packages/sdk/src/router/index.js";
 import type { Platform, PlatformAdapter, TradeIntent } from "../../../packages/sdk/src/types.js";
+import { GhostEngine } from "../../../packages/sdk/src/ghost/index.js";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -39,6 +40,9 @@ const adaptersMap = new Map<Platform, PlatformAdapter>([
 // Init Smart Order Router
 const sor = new SmartOrderRouter();
 for (const adapter of adaptersList) sor.registerAdapter(adapter);
+
+// Ghost Market Engine (started in boot after DB is ready)
+let ghostEngine: GhostEngine | null = null;
 
 // WS price feed — started on boot, shared across all requests
 const priceFeed = new PriceFeed();
@@ -423,6 +427,59 @@ app.get("/api/portfolio/:address", async (req, res) => {
   }
 });
 
+// ── Ghost Market API ──────────────────────────────────────────────────────────
+
+// GET /api/ghost-markets — list ghost markets (pending AI-predicted markets)
+// Query params: ?status=ghost|matched|rejected&limit=50
+app.get("/api/ghost-markets", async (req, res) => {
+  try {
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const status = (req.query.status as string) || "ghost";
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+
+    const ghosts = await db.collection("ghost_markets")
+      .find({ status })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+
+    res.json({
+      count: ghosts.length,
+      status,
+      ghosts: ghosts.map((g) => ({
+        id: String(g._id),
+        question: g.question,
+        category: g.category,
+        confidence: g.confidence,
+        resolutionDate: g.resolutionDate,
+        resolutionSource: g.resolutionSource,
+        status: g.status,
+        globalEventId: g.globalEventId ?? null,
+        resolutionRisk: g.resolutionRisk ?? null,
+        similarityScore: g.similarityScore ?? null,
+        matchedAt: g.matchedAt ?? null,
+        createdAt: g.createdAt,
+      })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/ghost-markets/process — manually trigger article processing
+app.post("/api/ghost-markets/process", async (_req, res) => {
+  try {
+    if (!ghostEngine) {
+      res.status(503).json({ error: "GhostEngine not started" });
+      return;
+    }
+    const created = await ghostEngine.processNow();
+    res.json({ success: true, created });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/sync — trigger market sync across all platforms
 app.post("/api/sync", async (_req, res) => {
   try {
@@ -487,6 +544,11 @@ async function boot() {
       console.log(`  "${e.question}" → [${e.platforms.map(p => p.platform).join(" + ")}]`);
     }
   }
+
+  // Start Ghost Market Engine (predictive + reactive tracks)
+  ghostEngine = new GhostEngine(db);
+  ghostEngine.start();
+  console.log("✓ Ghost Market Engine started");
 
   console.log(`\nProbly API ready on http://localhost:${PORT}\n`);
 }
