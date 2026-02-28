@@ -16,7 +16,7 @@ function StatCard({ label, value, sub, color }: { label: string; value: string |
 }
 
 export default function MatrixTerminal() {
-  const { markets, arbMarkets, updatedAt, loading, error, wsMarkets } = usePrices(2000);
+  const { markets, arbMarkets, updatedAt, loading, error, wsMarkets, priceHistory } = usePrices(2000);
 
   const msAgo = updatedAt ? Math.round((Date.now() - updatedAt) / 1000) : null;
 
@@ -89,7 +89,7 @@ export default function MatrixTerminal() {
           </div>
         )}
 
-        <MarketTable markets={markets} loading={loading} />
+        <MarketTable markets={markets} loading={loading} priceHistory={priceHistory} />
 
         {/* Legend */}
         <div className="mt-4 flex items-center gap-4 text-xs font-mono text-terminal-muted">

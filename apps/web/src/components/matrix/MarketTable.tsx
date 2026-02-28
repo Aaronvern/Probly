@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { type MarketPrice } from "@/lib/api";
 import { TradePanel } from "./TradePanel";
+import { Sparkline } from "./Sparkline";
 import { ArrowUpRight, Wifi, WifiOff, Clock } from "lucide-react";
 
 const PLATFORMS = ["opinion", "predict", "probable"] as const;
@@ -50,9 +51,10 @@ function PriceCell({
 interface MarketTableProps {
   markets: MarketPrice[];
   loading: boolean;
+  priceHistory: Map<string, number[]>;
 }
 
-export function MarketTable({ markets, loading }: MarketTableProps) {
+export function MarketTable({ markets, loading, priceHistory }: MarketTableProps) {
   const [selected, setSelected] = useState<MarketPrice | null>(null);
   const [filter, setFilter] = useState<"all" | "arb" | "multi">("all");
 
@@ -70,17 +72,16 @@ export function MarketTable({ markets, loading }: MarketTableProps) {
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1 rounded text-xs font-mono border transition-colors ${
-              filter === f
-                ? "border-bnb text-bnb bg-bnb/10"
-                : "border-terminal-border text-terminal-muted hover:text-terminal-text"
-            }`}
+            className={`px-3 py-1 rounded text-xs font-mono border transition-colors ${filter === f
+              ? "border-bnb text-bnb bg-bnb/10"
+              : "border-terminal-border text-terminal-muted hover:text-terminal-text"
+              }`}
           >
             {f === "all"
               ? `ALL (${markets.length})`
               : f === "arb"
-              ? `ARB (${markets.filter((m) => m.hasArb).length})`
-              : `MULTI (${markets.filter((m) => m.platforms.length > 1).length})`}
+                ? `ARB (${markets.filter((m) => m.hasArb).length})`
+                : `MULTI (${markets.filter((m) => m.platforms.length > 1).length})`}
           </button>
         ))}
       </div>
@@ -92,6 +93,9 @@ export function MarketTable({ markets, loading }: MarketTableProps) {
             <tr className="border-b border-terminal-border bg-terminal-surface">
               <th className="text-left py-2.5 px-4 text-xs font-mono text-terminal-muted uppercase tracking-wider">
                 Market
+              </th>
+              <th className="text-center py-2.5 px-2 text-xs font-mono text-terminal-muted uppercase tracking-wider w-[96px]">
+                TREND
               </th>
               {PLATFORMS.map((p) => (
                 <th
@@ -115,13 +119,13 @@ export function MarketTable({ markets, loading }: MarketTableProps) {
           <tbody>
             {loading && markets.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-12 text-center text-terminal-muted font-mono text-sm">
+                <td colSpan={10} className="py-12 text-center text-terminal-muted font-mono text-sm">
                   Connecting to markets...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-12 text-center text-terminal-muted font-mono text-sm">
+                <td colSpan={10} className="py-12 text-center text-terminal-muted font-mono text-sm">
                   No markets match filter
                 </td>
               </tr>
@@ -131,9 +135,8 @@ export function MarketTable({ markets, loading }: MarketTableProps) {
                 return (
                   <tr
                     key={market.globalEventId}
-                    className={`border-b border-terminal-border/50 hover:bg-terminal-surface/50 cursor-pointer transition-all ${
-                      market.hasArb ? "arb-row" : ""
-                    }`}
+                    className={`border-b border-terminal-border/50 hover:bg-terminal-surface/50 cursor-pointer transition-all ${market.hasArb ? "arb-row" : ""
+                      }`}
                     onClick={() => setSelected(market)}
                   >
                     {/* Question */}
@@ -141,6 +144,11 @@ export function MarketTable({ markets, loading }: MarketTableProps) {
                       <div className="text-xs text-terminal-text leading-snug line-clamp-2">
                         {market.question}
                       </div>
+                    </td>
+
+                    {/* Sparkline Trend */}
+                    <td className="py-3 px-2 text-center">
+                      <Sparkline data={priceHistory.get(market.globalEventId) ?? []} />
                     </td>
 
                     {/* Per-platform YES prices */}
