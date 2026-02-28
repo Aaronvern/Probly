@@ -1,5 +1,4 @@
-# ── Stage 1: Build ──
-FROM node:20-slim AS builder
+FROM node:20-slim
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 WORKDIR /app
 
@@ -17,24 +16,9 @@ ENV NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID}
 WORKDIR /app/apps/web
 RUN npx next build
 
-# ── Stage 2: Production runner ──
-FROM node:20-slim
-WORKDIR /app
-
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
-
-# Copy standalone output (includes server.js + node_modules)
-COPY --from=builder /app/apps/web/.next/standalone ./
-
-# Copy static assets (NOT included in standalone output)
-COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
-
-# Copy public dir if it exists (glob trick: no-op if dir missing)
-RUN mkdir -p ./apps/web/public
-COPY --from=builder /app/apps/web/publi[c] ./apps/web/public
-
 EXPOSE 3000
 
-CMD ["node", "apps/web/server.js"]
+CMD ["npx", "next", "start", "-p", "3000"]
