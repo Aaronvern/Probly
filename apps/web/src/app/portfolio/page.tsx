@@ -66,6 +66,7 @@ export default function PortfolioPage() {
         otcModal.pos.outcome,
         otcModal.pos.shares,
         quote.usdtOut * 0.99, // 1% slippage tolerance
+        address,
       );
       setCashOutResult(result);
       // Refresh portfolio after successful cash-out

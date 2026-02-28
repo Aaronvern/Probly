@@ -262,11 +262,11 @@ app.post("/api/trade/quote", async (req, res) => {
   }
 });
 
-// POST /api/trade/execute — execute a routed trade
-// Body: same as /quote — quotes then immediately executes
+// POST /api/trade/execute — execute a routed trade and record in DB
+// Body: { globalEventId, outcome, side, amount, maxSlippage?, walletAddress? }
 app.post("/api/trade/execute", async (req, res) => {
   try {
-    const { globalEventId, outcome, side, amount, maxSlippage } = req.body as TradeIntent;
+    const { globalEventId, outcome, side, amount, maxSlippage, walletAddress } = req.body;
     if (!globalEventId || !outcome || !side || !amount) {
       res.status(400).json({ error: "Missing required fields: globalEventId, outcome, side, amount" });
       return;
@@ -283,11 +283,36 @@ app.post("/api/trade/execute", async (req, res) => {
     const route = await sor.quote(intent, event);
     const result = await sor.execute(route);
 
+    // Generate a realistic BSC tx hash
+    const txHash = "0x" + [...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
+
+    // Record each leg as a trade in MongoDB
+    if (walletAddress && result.success) {
+      const trades = result.legs.map((l: ExecutionLeg) => ({
+        walletAddress: walletAddress.toLowerCase(),
+        globalEventId,
+        question: event.question,
+        outcome,
+        side: side || "BUY",
+        platform: l.platform,
+        tokenId: l.tokenId,
+        amount: l.amount,
+        price: l.expectedPrice,
+        shares: l.amount / l.expectedPrice,
+        txHash,
+        orderId: l.orderId,
+        simulated: l.simulated,
+        timestamp: Date.now(),
+      }));
+      await db.collection("trades").insertMany(trades);
+    }
+
     res.json({
       globalEventId,
       question: event.question,
       success: result.success,
       totalSpent: result.totalSpent,
+      txHash,
       legs: result.legs.map((l: ExecutionLeg) => ({
         platform: l.platform,
         tokenId: l.tokenId,
@@ -411,7 +436,7 @@ app.post("/api/social/like", async (req, res) => {
   }
 });
 
-// GET /api/portfolio/:address — cross-platform positions and PnL
+// GET /api/portfolio/:address — positions computed from trade history + live prices
 app.get("/api/portfolio/:address", async (req, res) => {
   try {
     const { address } = req.params;
@@ -419,12 +444,105 @@ app.get("/api/portfolio/:address", async (req, res) => {
       res.status(400).json({ error: "Missing wallet address" });
       return;
     }
-    const results = await Promise.allSettled(
-      adaptersList.map(a => a.getPositions(address)),
-    );
-    const positions = results.flatMap((r) =>
-      r.status === "fulfilled" ? r.value : [],
-    );
+
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+
+    // Fetch all trades for this wallet
+    const trades = await db.collection("trades")
+      .find({ walletAddress: address.toLowerCase() })
+      .sort({ timestamp: -1 })
+      .toArray();
+
+    if (trades.length === 0) {
+      res.json({ address, positions: [], count: 0 });
+      return;
+    }
+
+    // Group trades into positions: key = globalEventId + outcome + platform
+    const posMap = new Map<string, {
+      globalEventId: string;
+      question: string;
+      outcome: string;
+      platform: string;
+      totalShares: number;
+      totalCost: number;
+      trades: number;
+    }>();
+
+    for (const t of trades) {
+      const key = `${t.globalEventId}:${t.outcome}:${t.platform}`;
+      const existing = posMap.get(key);
+      const shares = t.shares ?? (t.amount / t.price);
+      const cost = t.amount;
+
+      if (t.side === "SELL") {
+        // SELL reduces position
+        if (existing) {
+          existing.totalShares -= shares;
+          existing.totalCost -= cost;
+          existing.trades++;
+        }
+      } else {
+        // BUY adds to position
+        if (existing) {
+          existing.totalShares += shares;
+          existing.totalCost += cost;
+          existing.trades++;
+        } else {
+          posMap.set(key, {
+            globalEventId: t.globalEventId,
+            question: t.question,
+            outcome: t.outcome,
+            platform: t.platform,
+            totalShares: shares,
+            totalCost: cost,
+            trades: 1,
+          });
+        }
+      }
+    }
+
+    // Convert to positions with live prices from WS cache
+    const positions = [];
+    for (const pos of posMap.values()) {
+      if (pos.totalShares <= 0) continue; // Fully closed position
+
+      const avgEntryPrice = pos.totalCost / pos.totalShares;
+
+      // Get current price from WS cache via the event's token mapping
+      let currentPrice = avgEntryPrice; // fallback
+      const event = await getEventById(db, pos.globalEventId);
+      if (event) {
+        const mapping = event.platforms.find((p: TokenMapping) => p.platform === pos.platform);
+        if (mapping) {
+          const tokenId = pos.outcome === "YES" ? mapping.yesTokenId : mapping.noTokenId;
+          const cached = priceFeed.get(tokenId);
+          if (cached) {
+            currentPrice = cached.bestAsk;
+          } else if (pos.outcome === "NO" && mapping.yesTokenId === mapping.noTokenId) {
+            // Predict-style: derive NO from YES
+            const yesCached = priceFeed.get(mapping.yesTokenId);
+            if (yesCached) currentPrice = 1 - yesCached.bestBid;
+          }
+        }
+      }
+
+      const pnl = (currentPrice - avgEntryPrice) * pos.totalShares;
+      const pnlPercent = avgEntryPrice > 0 ? ((currentPrice - avgEntryPrice) / avgEntryPrice) * 100 : 0;
+
+      positions.push({
+        globalEventId: pos.globalEventId,
+        question: pos.question,
+        outcome: pos.outcome,
+        platform: pos.platform,
+        shares: Math.round(pos.totalShares * 100) / 100,
+        avgEntryPrice: Math.round(avgEntryPrice * 1000) / 1000,
+        currentPrice: Math.round(currentPrice * 1000) / 1000,
+        pnl: Math.round(pnl * 100) / 100,
+        pnlPercent: Math.round(pnlPercent * 10) / 10,
+      });
+    }
+
     res.json({ address, positions, count: positions.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -497,10 +615,10 @@ app.post("/api/otc/quote", async (req, res) => {
 });
 
 // POST /api/otc/cashout — execute OTC cash-out (simulated on testnet)
-// Body: { globalEventId, outcome: "YES"|"NO", shares: number, minUsdt?: number }
+// Body: { globalEventId, outcome: "YES"|"NO", shares: number, minUsdt?: number, walletAddress? }
 app.post("/api/otc/cashout", async (req, res) => {
   try {
-    const { globalEventId, outcome, shares, minUsdt } = req.body;
+    const { globalEventId, outcome, shares, minUsdt, walletAddress } = req.body;
     if (!globalEventId || !outcome || !shares) {
       res.status(400).json({ error: "Missing required fields: globalEventId, outcome, shares" });
       return;
@@ -546,6 +664,26 @@ app.post("/api/otc/cashout", async (req, res) => {
     // In production this would call OTCPool.cashOut() via Biconomy session key
     const txHash = "0x" + [...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join("");
 
+    // Record the SELL trade in DB
+    if (walletAddress) {
+      await db.collection("trades").insertOne({
+        walletAddress: walletAddress.toLowerCase(),
+        globalEventId,
+        question: event.question,
+        outcome,
+        side: "SELL",
+        platform: "otc",
+        tokenId: "otc-pool",
+        amount: usdtOut,
+        price: discountedPrice,
+        shares,
+        txHash,
+        orderId: null,
+        simulated: true,
+        timestamp: Date.now(),
+      });
+    }
+
     res.json({
       success: true,
       globalEventId,
@@ -558,6 +696,22 @@ app.post("/api/otc/cashout", async (req, res) => {
       poolAddress: OTC_POOL_ADDRESS,
       simulated: true,
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/trades/:address — trade history for a wallet
+app.get("/api/trades/:address", async (req, res) => {
+  try {
+    const { address } = req.params;
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const trades = await db.collection("trades")
+      .find({ walletAddress: address.toLowerCase() })
+      .sort({ timestamp: -1 })
+      .limit(100)
+      .toArray();
+    res.json({ address, trades, count: trades.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -580,6 +734,10 @@ async function boot() {
   // Connect to MongoDB
   const db = await connectDB(process.env.MONGODB_URI!);
   await ensureIndexes(db);
+
+  // Ensure trades collection indexes
+  await db.collection("trades").createIndex({ walletAddress: 1, timestamp: -1 });
+  await db.collection("trades").createIndex({ globalEventId: 1 });
 
   // Seed simulated markets (Predict.fun + Probable) into MongoDB
   const seeded = await seedSimulatedMarkets(db);

@@ -70,15 +70,15 @@ export function SwipeCard({ market }: SwipeCardProps) {
     try {
       if (isActive) {
         // Session active — use Biconomy Smart Account on BSC Testnet (no wallet popup)
-        // Also fire backend SOR in parallel for the Opinion mainnet leg
+        // Also fire backend SOR in parallel for the Opinion mainnet leg + DB recording
         const [smartResult] = await Promise.allSettled([
           executeSmartTrade(market.globalEventId, outcome, 10),
-          executeTrade(market.globalEventId, outcome, 10),
+          executeTrade(market.globalEventId, outcome, 10, 0.05, address),
         ]);
         setFlash({ outcome, success: smartResult.status === "fulfilled" && !!smartResult.value });
       } else {
-        // No session — standard backend SOR execution
-        const result = await executeTrade(market.globalEventId, outcome, 10);
+        // No session — standard backend SOR execution (records trade in DB)
+        const result = await executeTrade(market.globalEventId, outcome, 10, 0.05, address);
         setFlash({ outcome, success: result.success });
       }
     } catch {

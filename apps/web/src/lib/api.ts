@@ -65,11 +65,12 @@ export async function executeTrade(
   outcome: "YES" | "NO",
   amount: number,
   maxSlippage = 0.05,
+  walletAddress?: string,
 ) {
   const res = await fetch(`${API}/api/trade/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ globalEventId, outcome, side: "BUY", amount, maxSlippage }),
+    body: JSON.stringify({ globalEventId, outcome, side: "BUY", amount, maxSlippage, walletAddress }),
   });
   if (!res.ok) throw new Error("Failed to execute trade");
   return res.json();
@@ -170,11 +171,11 @@ export async function otcQuote(globalEventId: string, outcome: string, shares: n
   return res.json();
 }
 
-export async function otcCashOut(globalEventId: string, outcome: string, shares: number, minUsdt?: number): Promise<OTCCashOutResult> {
+export async function otcCashOut(globalEventId: string, outcome: string, shares: number, minUsdt?: number, walletAddress?: string): Promise<OTCCashOutResult> {
   const res = await fetch(`${API}/api/otc/cashout`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ globalEventId, outcome, shares, minUsdt }),
+    body: JSON.stringify({ globalEventId, outcome, shares, minUsdt, walletAddress }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: "OTC cash-out failed" }));
