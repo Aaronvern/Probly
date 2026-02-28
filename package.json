@@ -10,12 +10,13 @@
   ],
   "scripts": {
     "generate-probable-key": "tsx scripts/generate-probable-key.ts",
-    "dev:api": "npx nx serve api",
-    "dev:web": "npx nx dev web",
-    "build": "npx nx run-many -t build",
-    "test": "npx nx run-many -t test",
-    "lint": "npx nx run-many -t lint"
+    "dev:api": "pnpm dlx nx serve api",
+    "dev:web": "pnpm dlx nx dev web",
+    "build": "pnpm dlx nx run-many -t build",
+    "test": "pnpm dlx nx run-many -t test",
+    "lint": "pnpm dlx nx run-many -t lint"
   },
+  "packageManager": "pnpm@9.0.0",
   "keywords": [
     "bnb",
     "prediction-markets",
