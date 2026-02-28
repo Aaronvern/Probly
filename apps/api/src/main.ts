@@ -88,6 +88,15 @@ app.get("/api/prices", async (_req, res) => {
 
       if (hasWsData) {
         const agg = buildAggFromCache(event, priceFeed);
+        const platformPrices: Record<string, { yes: number | null; no: number | null }> = {};
+        for (const p of event.platforms) {
+          const yesCache = priceFeed.get(p.yesTokenId);
+          const noCache = priceFeed.get(p.noTokenId);
+          platformPrices[p.platform] = {
+            yes: yesCache ? yesCache.bestAsk : null,
+            no: noCache ? noCache.bestAsk : null,
+          };
+        }
         return {
           globalEventId: event.globalEventId,
           question: event.question,
@@ -97,6 +106,7 @@ app.get("/api/prices", async (_req, res) => {
           hasArb: agg.hasArb,
           arbSpread: agg.arbSpread,
           dataSource: "ws" as const,
+          platformPrices,
         };
       }
 
@@ -117,6 +127,7 @@ app.get("/api/prices", async (_req, res) => {
           hasArb: false,
           arbSpread: undefined,
           dataSource: hasAnyPrice ? "ws" as const : "pending" as const,
+          platformPrices: {},
         };
       }
 
@@ -126,6 +137,17 @@ app.get("/api/prices", async (_req, res) => {
           [...adaptersMap].filter(([k]) => k !== "opinion"),
         );
         const agg = await aggregateOrderbooks(event, fallbackMap);
+        const platformPrices: Record<string, { yes: number | null; no: number | null }> = {};
+        for (const book of agg.yes.books) {
+          platformPrices[book.platform] = { yes: book.bestAsk, no: null };
+        }
+        for (const book of agg.no.books) {
+          if (platformPrices[book.platform]) {
+            platformPrices[book.platform].no = book.bestAsk;
+          } else {
+            platformPrices[book.platform] = { yes: null, no: book.bestAsk };
+          }
+        }
         return {
           globalEventId: event.globalEventId,
           question: event.question,
@@ -135,6 +157,7 @@ app.get("/api/prices", async (_req, res) => {
           hasArb: agg.hasArb,
           arbSpread: agg.arbSpread,
           dataSource: "rest" as const,
+          platformPrices,
         };
       } catch {
         return {
@@ -375,6 +398,26 @@ app.post("/api/social/like", async (req, res) => {
       await db.collection("likes").insertOne({ marketId, address, createdAt: Date.now() });
       res.json({ liked: true });
     }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/portfolio/:address — cross-platform positions and PnL
+app.get("/api/portfolio/:address", async (req, res) => {
+  try {
+    const { address } = req.params;
+    if (!address) {
+      res.status(400).json({ error: "Missing wallet address" });
+      return;
+    }
+    const results = await Promise.allSettled(
+      adaptersList.map(a => a.getPositions(address)),
+    );
+    const positions = results.flatMap((r) =>
+      r.status === "fulfilled" ? r.value : [],
+    );
+    res.json({ address, positions, count: positions.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

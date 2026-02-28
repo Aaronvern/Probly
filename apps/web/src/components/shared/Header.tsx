@@ -46,6 +46,14 @@ export function Header({ wsCount, total }: { wsCount?: number; total?: number })
         >
           SWIPE
         </Link>
+        <Link
+          href="/portfolio"
+          className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
+            pathname === "/portfolio" ? "bg-bnb text-terminal-bg font-bold" : "text-terminal-muted hover:text-terminal-text"
+          }`}
+        >
+          PORTFOLIO
+        </Link>
       </nav>
 
       <ConnectButton

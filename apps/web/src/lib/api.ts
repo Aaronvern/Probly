@@ -9,6 +9,7 @@ export interface MarketPrice {
   hasArb: boolean;
   arbSpread?: number;
   dataSource: "ws" | "rest" | "pending" | "none";
+  platformPrices?: Record<string, { yes: number | null; no: number | null }>;
 }
 
 export interface PricesResponse {
@@ -126,4 +127,23 @@ export async function getFollowing(address: string): Promise<string[]> {
   const res = await fetch(`${API}/api/social/following/${address}`);
   if (!res.ok) return [];
   return res.json();
+}
+
+export interface PortfolioPosition {
+  globalEventId: string;
+  question: string;
+  outcome: string;
+  platform: string;
+  shares: number;
+  avgEntryPrice: number;
+  currentPrice: number;
+  pnl: number;
+  pnlPercent: number;
+}
+
+export async function getPortfolio(address: string): Promise<PortfolioPosition[]> {
+  const res = await fetch(`${API}/api/portfolio/${address}`);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.positions ?? [];
 }
