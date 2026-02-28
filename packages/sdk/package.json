@@ -13,8 +13,13 @@
     "@prob/core": "^0.3.0",
     "@prob/types": "^0.0.1",
     "bignumber.js": "^9.3.1",
+    "mongodb": "^6.16.0",
     "ethers": "^6.13.5",
     "viem": "^2.46.3"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

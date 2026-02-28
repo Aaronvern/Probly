@@ -5,13 +5,14 @@ import { Calendar, Clock, ExternalLink } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-interface NewsEvent {
+interface GhostEvent {
   id: string;
-  headline: string;
-  source: string;
+  question: string;
   category: string;
-  url: string;
-  fetchedAt: number;
+  confidence: number | null;
+  resolutionDate: string | null;
+  resolutionSource: string | null;
+  createdAt: number;
 }
 
 const CATEGORY_META: Record<string, { label: string; dot: string; badge: string }> = {
@@ -20,18 +21,32 @@ const CATEGORY_META: Record<string, { label: string; dot: string; badge: string 
   politics: { label: "POLICY",   dot: "bg-red-400",        badge: "text-red-400 border-red-400/30 bg-red-400/10" },
   tech:     { label: "TECH",     dot: "bg-blue-400",       badge: "text-blue-400 border-blue-400/30 bg-blue-400/10" },
   sports:   { label: "SPORTS",   dot: "bg-purple-400",     badge: "text-purple-400 border-purple-400/30 bg-purple-400/10" },
+  other:    { label: "OTHER",    dot: "bg-terminal-muted", badge: "text-terminal-muted border-terminal-muted/30 bg-terminal-muted/10" },
 };
 
-function timeAgo(ts: number): string {
-  const diff = Math.floor((Date.now() - ts) / 1000);
-  if (diff < 60) return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
+function formatDate(iso: string | null): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch { return iso; }
+}
+
+function ConfidenceBar({ value }: { value: number }) {
+  const pct = Math.round(value * 100);
+  const color = pct >= 80 ? "bg-terminal-green" : pct >= 60 ? "bg-yellow-400" : "bg-terminal-muted";
+  return (
+    <div className="flex items-center gap-1.5">
+      <div className="w-16 h-1 bg-terminal-border rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-[10px] font-mono text-terminal-muted">{pct}%</span>
+    </div>
+  );
 }
 
 export function EventCalendar() {
-  const [events, setEvents] = useState<NewsEvent[]>([]);
+  const [events, setEvents] = useState<GhostEvent[]>([]);
+  const [source, setSource] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +55,7 @@ export function EventCalendar() {
       .then((r) => r.json())
       .then((d) => {
         setEvents(d.events ?? []);
+        setSource(d.source ?? "");
         setLoading(false);
       })
       .catch((e) => {
@@ -55,7 +71,12 @@ export function EventCalendar() {
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-bnb" />
           <span className="font-mono text-sm font-bold text-terminal-text tracking-wider">EVENT CALENDAR</span>
-          <span className="ml-2 text-xs font-mono text-terminal-muted hidden sm:inline">— news events likely to spawn prediction markets</span>
+          {source === "ghost_markets" && (
+            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border text-bnb border-bnb/30 bg-bnb/10 ml-1">AI</span>
+          )}
+          <span className="ml-1 text-xs font-mono text-terminal-muted hidden sm:inline">
+            — {source === "ghost_markets" ? "LLM-predicted markets from live news" : "news events likely to spawn prediction markets"}
+          </span>
         </div>
         {!loading && (
           <span className="text-xs font-mono text-terminal-muted">{events.length} events</span>
@@ -68,58 +89,44 @@ export function EventCalendar() {
           Loading events...
         </div>
       )}
-
       {error && (
-        <div className="px-4 py-4 text-xs font-mono text-red-400">
-          Failed to load events — {error}
-        </div>
+        <div className="px-4 py-4 text-xs font-mono text-red-400">Failed to load — {error}</div>
       )}
-
       {!loading && !error && events.length === 0 && (
         <div className="px-4 py-8 text-center text-xs font-mono text-terminal-muted">
-          No event-related articles found. News ingester will populate shortly.
+          No events yet — news ingester will populate shortly.
         </div>
       )}
 
       {!loading && events.length > 0 && (
         <div className="divide-y divide-terminal-border">
           {events.map((ev) => {
-            const meta = CATEGORY_META[ev.category] ?? CATEGORY_META["tech"];
+            const meta = CATEGORY_META[ev.category] ?? CATEGORY_META["other"];
             return (
-              <div
-                key={ev.id}
-                className="flex items-start gap-3 px-4 py-3 hover:bg-terminal-bg/40 transition-colors"
-              >
-                {/* Dot */}
+              <div key={ev.id} className="flex items-start gap-3 px-4 py-3 hover:bg-terminal-bg/40 transition-colors">
                 <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${meta.dot}`} />
-
-                {/* Content */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-mono text-sm text-terminal-text">{ev.headline}</span>
+                    <span className="font-mono text-sm text-terminal-text">{ev.question}</span>
                     <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${meta.badge}`}>
                       {meta.label}
                     </span>
                   </div>
-                  <div className="text-[11px] font-mono text-terminal-muted mt-0.5">
-                    {ev.source}
+                  <div className="flex items-center gap-3 mt-1 flex-wrap">
+                    {ev.confidence !== null && <ConfidenceBar value={ev.confidence} />}
+                    {ev.resolutionSource && (
+                      <span className="text-[10px] font-mono text-terminal-muted">via {ev.resolutionSource}</span>
+                    )}
                   </div>
                 </div>
-
-                {/* Right side */}
-                <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                  <div className="flex items-center gap-1 text-[10px] font-mono text-terminal-muted">
+                <div className="flex-shrink-0 text-right">
+                  {ev.resolutionDate && (
+                    <div className="text-xs font-mono text-terminal-text">{formatDate(ev.resolutionDate)}</div>
+                  )}
+                  <div className="flex items-center gap-1 text-[10px] font-mono text-terminal-muted justify-end mt-0.5">
                     <Clock className="w-2.5 h-2.5" />
-                    {timeAgo(ev.fetchedAt)}
+                    {new Date(ev.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                   </div>
-                  <a
-                    href={ev.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-terminal-muted hover:text-bnb transition-colors"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
                 </div>
               </div>
             );

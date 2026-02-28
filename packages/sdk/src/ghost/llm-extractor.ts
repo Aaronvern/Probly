@@ -60,8 +60,13 @@ export async function extractGhostMarket(
   const text = response.content[0].type === "text" ? response.content[0].text : "";
 
   try {
-    const parsed = JSON.parse(text.trim());
-    if (!parsed.isPredictable || parsed.confidence < 0.6) return null;
+    // Strip markdown code fences if Claude wraps response in ```json ... ```
+    const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+    const parsed = JSON.parse(cleaned);
+    if (!parsed.isPredictable || parsed.confidence < 0.45) {
+      console.log(`[LLMExtractor] Skipped: isPredictable=${parsed.isPredictable} confidence=${parsed.confidence}`);
+      return null;
+    }
     return {
       question: parsed.question,
       resolutionDate: parsed.resolutionDate,
@@ -69,7 +74,8 @@ export async function extractGhostMarket(
       category: parsed.category ?? "other",
       confidence: parsed.confidence,
     };
-  } catch {
+  } catch (e: any) {
+    console.warn(`[LLMExtractor] JSON parse failed: ${e.message} | raw: ${text.slice(0, 100)}`);
     return null;
   }
 }
@@ -85,10 +91,12 @@ export async function processUnprocessedArticles(db: Db): Promise<number> {
     .limit(50)
     .toArray();
 
+  console.log(`[LLMExtractor] Processing ${articles.length} unprocessed articles...`);
   let created = 0;
 
   for (const article of articles) {
     try {
+      console.log(`[LLMExtractor] → "${article.headline?.slice(0, 60)}"`);
       const proposal = await extractGhostMarket(article.headline, article.body ?? "");
 
       if (proposal) {

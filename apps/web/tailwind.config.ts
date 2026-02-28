@@ -43,6 +43,7 @@ const config: Config = {
     },
   },
   plugins: [],
+  safelist: ["pb-safe"],
 };
 
 export default config;

@@ -466,6 +466,17 @@ app.get("/api/ghost-markets", async (req, res) => {
   }
 });
 
+// POST /api/ghost-markets/reset — reset all articles to unprocessed so extractor reruns
+app.post("/api/ghost-markets/reset", async (_req, res) => {
+  try {
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const result = await db.collection("news_articles").updateMany({}, { $set: { processed: false } });
+    res.json({ success: true, reset: result.modifiedCount });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/ghost-markets/process — manually trigger article processing
 app.post("/api/ghost-markets/process", async (_req, res) => {
   try {
@@ -480,40 +491,76 @@ app.post("/api/ghost-markets/process", async (_req, res) => {
   }
 });
 
-// GET /api/events — recent news articles as event calendar feed
-// Queries news_articles from MongoDB, filters for event-signal keywords
+// GET /api/debug/extract — show article stats + reset a few articles to reprocess
+app.get("/api/debug/extract", async (_req, res) => {
+  try {
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const total = await db.collection("news_articles").countDocuments();
+    const unprocessed = await db.collection("news_articles").countDocuments({ processed: false });
+    const ghosts = await db.collection("ghost_markets").countDocuments();
+    const sample = await db.collection("news_articles").findOne({});
+    res.json({ stats: { total, unprocessed, ghosts }, sampleHeadline: sample?.headline, sampleBody: sample?.body?.slice(0, 200) });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/events — LLM-extracted ghost markets for the Event Calendar
+// Returns structured prediction market questions from ghost_markets collection.
+// Falls back to raw keyword-filtered news if no ghost markets exist yet.
 app.get("/api/events", async (req, res) => {
   try {
     const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
     const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
 
+    const ghosts = await db
+      .collection("ghost_markets")
+      .find({ status: "ghost" })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+
+    if (ghosts.length > 0) {
+      res.json({
+        count: ghosts.length,
+        source: "ghost_markets",
+        events: ghosts.map((g) => ({
+          id: g._id?.toString(),
+          question: g.question,
+          category: g.category,
+          confidence: g.confidence,
+          resolutionDate: g.resolutionDate,
+          resolutionSource: g.resolutionSource,
+          createdAt: g.createdAt,
+        })),
+      });
+      return;
+    }
+
+    // Fallback: raw news articles filtered by event keywords
     const EVENT_KEYWORDS = [
-      "summit", "conference", "hearing", "decision", "expiry", "expiration",
-      "launch", "upgrade", "report", "meeting", "vote", "election", "deadline",
-      "announce", "release", "ruling", "verdict", "regulation", "ban", "approval",
-      "etf", "fomc", "fed", "cpi", "gdp", "nfp", "payroll",
+      "summit", "conference", "hearing", "decision", "expiry", "launch",
+      "upgrade", "report", "meeting", "vote", "election", "announcement",
+      "etf", "fomc", "fed", "cpi", "nfp", "payroll",
     ];
-
-    const keywordRegex = EVENT_KEYWORDS.join("|");
-
     const articles = await db
       .collection("news_articles")
-      .find({
-        headline: { $regex: keywordRegex, $options: "i" },
-      })
+      .find({ headline: { $regex: EVENT_KEYWORDS.join("|"), $options: "i" } })
       .sort({ fetchedAt: -1 })
       .limit(limit)
       .toArray();
 
     res.json({
       count: articles.length,
+      source: "news_articles",
       events: articles.map((a) => ({
         id: a._id?.toString(),
-        headline: a.headline,
-        source: a.source,
+        question: a.headline,
         category: a.category,
-        url: a.url,
-        fetchedAt: a.fetchedAt,
+        confidence: null,
+        resolutionDate: null,
+        resolutionSource: a.source,
+        createdAt: a.fetchedAt,
       })),
     });
   } catch (err: any) {
