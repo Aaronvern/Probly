@@ -40,7 +40,7 @@ export function TradePanel({ market, onClose }: TradePanelProps) {
     setExecuting(true);
     setError(null);
     try {
-      const r = await executeTrade(market.globalEventId, outcome, Number(amount));
+      const r = await executeTrade(market.globalEventId, outcome, Number(amount), 0.05, address ?? undefined);
       setResult(r);
       setQuote(null);
     } catch (e: any) {
