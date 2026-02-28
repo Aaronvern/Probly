@@ -63,7 +63,7 @@ export class PredictAdapter implements PlatformAdapter {
 
   async getMarkets(): Promise<UnifiedMarket[]> {
     const result = await this.fetch<PredictMarketRaw[]>("/v1/markets", {
-      first: "20",
+      first: "100",
       status: "OPEN",
     });
     return result.map((m) => this.normalizeMarket(m));

@@ -84,7 +84,7 @@ export class ProbableAdapter implements PlatformAdapter {
   async getMarkets(): Promise<UnifiedMarket[]> {
     const events = await this.fetchPublic<ProbableEventRaw[]>("events", {
       page: "1",
-      limit: "20",
+      limit: "100",
       status: "active",
     });
     return events.flatMap((e) => this.normalizeEvent(e));

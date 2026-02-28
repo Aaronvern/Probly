@@ -70,7 +70,7 @@ export class OpinionAdapter implements PlatformAdapter {
   async getMarkets(): Promise<UnifiedMarket[]> {
     const result = await this.fetch<{ total: number; list: OpinionMarketRaw[] }>(
       "/market",
-      { pageNo: "1", pageSize: "20", status: "activated", chainId: "56" },
+      { pageNo: "1", pageSize: "100", status: "activated", chainId: "56" },
     );
     return result.list.map((m) => this.normalizeMarket(m));
   }
