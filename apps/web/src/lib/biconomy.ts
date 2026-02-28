@@ -75,6 +75,7 @@ export async function executeTradeViaSmartAccount(
   globalEventId: string,
   outcome: "YES" | "NO",
   amountUSDT = 10,
+  useYield = false,
 ): Promise<TradeResult> {
   const smartAccount = await createSmartAccountClient({
     signer: walletClient,
@@ -109,7 +110,7 @@ export async function executeTradeViaSmartAccount(
           usdtAmount,
           BigInt(0), // minShares — no slippage protection for demo
           0,        // Venue.PREDICT
-          false,    // useYield
+          useYield,
         ],
       }),
     },

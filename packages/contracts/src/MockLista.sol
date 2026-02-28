@@ -17,6 +17,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
  */
 contract MockLista is Ownable {
     IERC20 public immutable usdt;
+    address public router;
 
     uint256 public constant APY_BPS = 405; // 4.05% in basis points
     uint256 public constant BPS_DENOMINATOR = 10_000;
@@ -35,6 +36,10 @@ contract MockLista is Ownable {
 
     constructor(address _usdt) Ownable(msg.sender) {
         usdt = IERC20(_usdt);
+    }
+
+    function setRouter(address _router) external onlyOwner {
+        router = _router;
     }
 
     /**
@@ -94,6 +99,31 @@ contract MockLista is Ownable {
 
         usdt.transfer(msg.sender, total);
         emit Withdrawn(msg.sender, principal, accrued);
+    }
+
+    /**
+     * @notice Router-only withdraw on behalf of a user.
+     *         Returns 0 gracefully if user has no deposit (no revert).
+     *         Sends principal + proportional yield to msg.sender (the Router).
+     */
+    function withdrawFor(address user, uint256 maxAmount) external returns (uint256 total) {
+        require(msg.sender == router, "only router");
+
+        Deposit storage d = deposits[user];
+        if (d.amount == 0) return 0;
+
+        uint256 amount = maxAmount > d.amount ? d.amount : maxAmount;
+        uint256 accrued = _accrued(user);
+        uint256 yieldShare = (accrued * amount) / d.amount;
+
+        d.amount -= amount;
+        d.depositedAt = block.timestamp;
+        totalDeposited -= amount;
+
+        total = amount + yieldShare;
+        usdt.transfer(msg.sender, total);
+
+        emit Withdrawn(user, amount, yieldShare);
     }
 
     /// @notice View accrued yield for a user

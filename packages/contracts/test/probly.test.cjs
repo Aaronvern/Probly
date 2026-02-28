@@ -49,6 +49,9 @@ describe("Probly Contracts", function () {
     // Seed Lista
     await usdt.approve(await mockLista.getAddress(), USDT(5000));
     await mockLista.seed(USDT(5000));
+
+    // Authorize router to call withdrawFor
+    await mockLista.setRouter(await router.getAddress());
   });
 
   // ─── MockUSDT ────────────────────────────────────────────────────────────────
@@ -218,7 +221,7 @@ describe("Probly Contracts", function () {
       const tx = await router.connect(trader).executeSplitTrade(
         MARKET_1, YES,
         predictAmount, probableAmount,
-        0n, 0n
+        0n, 0n, false
       );
       const receipt = await tx.wait();
       expect(receipt.status).to.equal(1);
@@ -230,6 +233,85 @@ describe("Probly Contracts", function () {
       const tx = await router.connect(trader).executeBestTrade(MARKET_1, YES, spend, 0n, 0, false);
       const receipt = await tx.wait();
       expect(receipt.status).to.equal(1);
+    });
+
+    it("executeBestTrade with full yield coverage — wallet not charged", async () => {
+      const depositAmt = USDT(500);
+      await usdt.connect(trader).approve(await mockLista.getAddress(), depositAmt);
+      await mockLista.connect(trader).deposit(depositAmt);
+
+      // Fast-forward to accrue some yield
+      await hre.network.provider.send("evm_increaseTime", [7 * 24 * 60 * 60]);
+      await hre.network.provider.send("evm_mine");
+
+      const spend = USDT(100);
+      const walletBefore = await usdt.balanceOf(trader.address);
+
+      // No approval needed — yield covers the trade
+      const tx = await router.connect(trader).executeBestTrade(MARKET_1, YES, spend, 0n, 0, true);
+      const receipt = await tx.wait();
+      expect(receipt.status).to.equal(1);
+
+      const walletAfter = await usdt.balanceOf(trader.address);
+      // Wallet should not decrease (may increase from surplus refund)
+      expect(walletAfter).to.be.gte(walletBefore);
+    });
+
+    it("executeBestTrade with partial yield — wallet charged shortfall only", async () => {
+      const spend = USDT(1000);
+      const walletBefore = await usdt.balanceOf(trader.address);
+      const listaBalance = await mockLista.balanceOf(trader.address);
+
+      await usdt.connect(trader).approve(await router.getAddress(), spend);
+      const tx = await router.connect(trader).executeBestTrade(MARKET_1, YES, spend, 0n, 0, true);
+      const receipt = await tx.wait();
+      expect(receipt.status).to.equal(1);
+
+      const walletAfter = await usdt.balanceOf(trader.address);
+      const walletSpent = walletBefore - walletAfter;
+      // Wallet should have been charged less than the full trade amount
+      expect(walletSpent).to.be.lt(spend);
+      // Wallet spent should be roughly (spend - listaBalance)
+      expect(walletSpent).to.be.lte(spend - listaBalance + USDT(1));
+    });
+
+    it("executeBestTrade with useYield=true but no Lista deposit — graceful fallback", async () => {
+      // Use owner who has never deposited into Lista
+      await usdt.mint(owner.address, USDT(500));
+      const spend = USDT(100);
+      await usdt.connect(owner).approve(await router.getAddress(), spend);
+
+      const tx = await router.connect(owner).executeBestTrade(MARKET_1, YES, spend, 0n, 0, true);
+      const receipt = await tx.wait();
+      expect(receipt.status).to.equal(1);
+    });
+
+    it("executeSplitTrade with useYield=true", async () => {
+      // Deposit into Lista for trader
+      const depositAmt = USDT(300);
+      await usdt.connect(trader).approve(await mockLista.getAddress(), depositAmt);
+      await mockLista.connect(trader).deposit(depositAmt);
+
+      const predictAmount = USDT(100);
+      const probableAmount = USDT(100);
+
+      const tx = await router.connect(trader).executeSplitTrade(
+        MARKET_1, YES,
+        predictAmount, probableAmount,
+        0n, 0n, true
+      );
+      const receipt = await tx.wait();
+      expect(receipt.status).to.equal(1);
+    });
+  });
+
+  // ─── withdrawFor access control ────────────────────────────────────────────
+
+  describe("MockLista withdrawFor", () => {
+    it("reverts for non-router caller", async () => {
+      await expect(
+        mockLista.connect(trader).withdrawFor(trader.address, USDT(100))
+      ).to.be.revertedWith("only router");
     });
   });
 });

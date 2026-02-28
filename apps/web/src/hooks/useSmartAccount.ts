@@ -62,9 +62,10 @@ export function useSmartAccount() {
     globalEventId: string,
     outcome: "YES" | "NO",
     amountUSDT = 10,
+    useYield = false,
   ): Promise<TradeResult | null> => {
     if (!walletClient || !isActive) return null;
-    return executeTradeViaSmartAccount(walletClient, globalEventId, outcome, amountUSDT);
+    return executeTradeViaSmartAccount(walletClient, globalEventId, outcome, amountUSDT, useYield);
   }, [walletClient, isActive]);
 
   return { session, isActive, hoursLeft, activate, deactivate, loading, error, executeSmartTrade };

@@ -43,6 +43,12 @@ contract AggregatorRouter is Ownable {
         uint256 probableShares
     );
 
+    event YieldUnwrapped(
+        address indexed trader,
+        uint256 yieldAmount,
+        uint256 shortfall
+    );
+
     constructor(
         address _usdt,
         address _mockPredict,
@@ -72,16 +78,7 @@ contract AggregatorRouter is Ownable {
         Venue venue,
         bool useYield
     ) external returns (uint256 sharesOut) {
-        // JIT unwrap from Lista yield pool if requested
-        if (useYield) {
-            uint256 available = mockLista.balanceOf(msg.sender);
-            if (available >= usdtAmount) {
-                // Pull from Lista — returns principal + yield
-                mockLista.withdraw(usdtAmount);
-            }
-        }
-
-        usdt.transferFrom(msg.sender, address(this), usdtAmount);
+        _fundTrade(usdtAmount, useYield);
 
         if (venue == Venue.PREDICT) {
             usdt.approve(address(mockPredict), usdtAmount);
@@ -103,6 +100,7 @@ contract AggregatorRouter is Ownable {
      * @param probableAmount USDT to route to MockProbable
      * @param minPredictShares  Slippage guard for Predict leg
      * @param minProbableShares Slippage guard for Probable leg
+     * @param useYield       If true, JIT-unwrap from Lista before trade
      */
     function executeSplitTrade(
         uint256 marketId,
@@ -110,10 +108,11 @@ contract AggregatorRouter is Ownable {
         uint256 predictAmount,
         uint256 probableAmount,
         uint256 minPredictShares,
-        uint256 minProbableShares
+        uint256 minProbableShares,
+        bool useYield
     ) external returns (uint256 predictShares, uint256 probableShares) {
         uint256 total = predictAmount + probableAmount;
-        usdt.transferFrom(msg.sender, address(this), total);
+        _fundTrade(total, useYield);
 
         if (predictAmount > 0) {
             usdt.approve(address(mockPredict), predictAmount);
@@ -126,6 +125,29 @@ contract AggregatorRouter is Ownable {
         }
 
         emit SplitTrade(msg.sender, marketId, outcome, predictShares, probableShares);
+    }
+
+    /**
+     * @dev Fund a trade: JIT-unwrap from Lista if requested, then pull any shortfall from user wallet.
+     */
+    function _fundTrade(uint256 amount, bool useYield) internal {
+        if (useYield) {
+            uint256 fromYield = mockLista.withdrawFor(msg.sender, amount);
+            if (fromYield >= amount) {
+                // Yield fully covers trade; refund surplus to user
+                if (fromYield > amount) {
+                    usdt.transfer(msg.sender, fromYield - amount);
+                }
+                emit YieldUnwrapped(msg.sender, fromYield, 0);
+                return;
+            }
+            // Partial yield — pull only the shortfall from user wallet
+            uint256 shortfall = amount - fromYield;
+            usdt.transferFrom(msg.sender, address(this), shortfall);
+            emit YieldUnwrapped(msg.sender, fromYield, shortfall);
+        } else {
+            usdt.transferFrom(msg.sender, address(this), amount);
+        }
     }
 
     /**
