@@ -1,45 +1,43 @@
 # Probly Web — Next.js frontend
-FROM node:20-alpine AS base
+# Stage 1: Build
+FROM node:20-alpine AS builder
+
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 
-# Install dependencies
-FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/api/package.json apps/api/
-COPY apps/mcp-server/package.json apps/mcp-server/
-COPY apps/mock-api/package.json apps/mock-api/
-COPY apps/web/package.json apps/web/
-COPY packages/sdk/package.json packages/sdk/
-COPY packages/contracts/package.json packages/contracts/
-RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install --no-frozen-lockfile
 
-# Build Next.js
-FROM base AS builder
-WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN pnpm install --no-frozen-lockfile
 
 # NEXT_PUBLIC_ vars must be set at build time
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_BICONOMY_API_KEY
+ARG NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_BICONOMY_API_KEY=${NEXT_PUBLIC_BICONOMY_API_KEY}
+ENV NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID}
 
 WORKDIR /app/apps/web
 RUN npx next build
 
-# Production runner — standalone output
-FROM base AS runner
+# Stage 2: Run
+FROM node:20-alpine
+
 WORKDIR /app
 
 ENV NODE_ENV=production
-
-# Copy standalone server + static assets
-COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder /app/apps/web/public ./apps/web/public
-
-EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+EXPOSE 3000
+
+# Copy standalone output (includes server.js + node_modules)
+COPY --from=builder /app/apps/web/.next/standalone ./
+
+# Copy static assets (NOT included in standalone)
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+
+# Copy public dir if it exists (create empty dir as fallback)
+RUN mkdir -p ./apps/web/public
+COPY --from=builder /app/apps/web/publi[c] ./apps/web/public
 
 CMD ["node", "apps/web/server.js"]
