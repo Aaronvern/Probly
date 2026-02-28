@@ -9,8 +9,9 @@ export async function createSmartAccount(walletClient: WalletClient): Promise<Bi
   const smartAccount = await createSmartAccountClient({
     signer: walletClient as any,
     bundlerUrl: BUNDLER_URL,
-    biconomyPaymasterApiKey: process.env.NEXT_PUBLIC_BICONOMY_API_KEY!,
+    paymasterUrl: `https://paymaster.biconomy.io/api/v1/56/${process.env.NEXT_PUBLIC_BICONOMY_API_KEY}`,
     rpcUrl: "https://bsc-dataseed.binance.org",
+    chainId: 56,
   });
   return smartAccount;
 }
