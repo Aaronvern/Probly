@@ -2,7 +2,15 @@
 
 import { useState, useCallback } from "react";
 import { useWalletClient } from "wagmi";
-import { createSmartAccount, saveSession, loadSession, clearSession, type SessionData } from "@/lib/biconomy";
+import {
+  createSmartAccount,
+  executeTradeViaSmartAccount,
+  saveSession,
+  loadSession,
+  clearSession,
+  type SessionData,
+  type TradeResult,
+} from "@/lib/biconomy";
 
 export function useSmartAccount() {
   const { data: walletClient } = useWalletClient();
@@ -18,7 +26,6 @@ export function useSmartAccount() {
       const smartAccount = await createSmartAccount(walletClient);
       const smartAccountAddress = await smartAccount.getAccountAddress();
 
-      // Generate a random session key (ephemeral private key)
       const sessionKey = "0x" + Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
@@ -44,8 +51,23 @@ export function useSmartAccount() {
     setSession(null);
   }, []);
 
+  /**
+   * Execute a trade via Biconomy Smart Account on BSC Testnet.
+   * Batches approve + executeBestTrade in one UserOp — no wallet popup.
+   */
+  const executeSmartTrade = useCallback(async (
+    globalEventId: string,
+    outcome: "YES" | "NO",
+    amountUSDT = 10,
+  ): Promise<TradeResult | null> => {
+    if (!walletClient || !isActive) return null;
+    return executeTradeViaSmartAccount(walletClient, globalEventId, outcome, amountUSDT);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletClient, session?.expiresAt]);
+
   const isActive = !!session && Date.now() < session.expiresAt;
   const hoursLeft = session ? Math.max(0, Math.floor((session.expiresAt - Date.now()) / 3600000)) : 0;
 
-  return { session, isActive, hoursLeft, activate, deactivate, loading, error };
+  return { session, isActive, hoursLeft, activate, deactivate, loading, error, executeSmartTrade };
+
 }

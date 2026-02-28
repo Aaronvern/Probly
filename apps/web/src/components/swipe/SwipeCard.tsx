@@ -37,7 +37,7 @@ interface SwipeCardProps {
 
 export function SwipeCard({ market }: SwipeCardProps) {
   const { address } = useAccount();
-  const { isActive } = useSmartAccount();
+  const { isActive, executeSmartTrade } = useSmartAccount();
 
   // Real social stats from backend
   const [likeCount, setLikeCount] = useState(0);
@@ -68,8 +68,19 @@ export function SwipeCard({ market }: SwipeCardProps) {
     if (!address || trading) return;
     setTrading(outcome);
     try {
-      const result = await executeTrade(market.globalEventId, outcome, 10);
-      setFlash({ outcome, success: result.success });
+      if (isActive) {
+        // Session active — use Biconomy Smart Account on BSC Testnet (no wallet popup)
+        // Also fire backend SOR in parallel for the Opinion mainnet leg
+        const [smartResult] = await Promise.allSettled([
+          executeSmartTrade(market.globalEventId, outcome, 10),
+          executeTrade(market.globalEventId, outcome, 10),
+        ]);
+        setFlash({ outcome, success: smartResult.status === "fulfilled" && !!smartResult.value });
+      } else {
+        // No session — standard backend SOR execution
+        const result = await executeTrade(market.globalEventId, outcome, 10);
+        setFlash({ outcome, success: result.success });
+      }
     } catch {
       setFlash({ outcome, success: false });
     } finally {
