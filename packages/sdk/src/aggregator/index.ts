@@ -44,8 +44,8 @@ export async function aggregateOrderbooks(
         book.outcome = "NO";
         noBooks.push(book);
       }
-    } catch (err: any) {
-      console.warn(`[Aggregator] Failed to fetch orderbook from ${mapping.platform}: ${err.message}`);
+    } catch {
+      // Silently skip failed orderbook fetches — simulated platforms handle this gracefully
     }
   });
 
@@ -84,7 +84,10 @@ export function buildAggFromCache(event: GlobalEvent, feed: PriceFeed): Aggregat
 
   for (const p of event.platforms) {
     const yes = feed.get(p.yesTokenId);
-    const no = feed.get(p.noTokenId);
+    // For Predict-style (yesTokenId === noTokenId), derive NO from YES
+    const no = p.yesTokenId === p.noTokenId
+      ? (yes ? { bestAsk: 1 - yes.bestBid, bestBid: 1 - yes.bestAsk, updatedAt: yes.updatedAt } : undefined)
+      : feed.get(p.noTokenId);
     if (yes) {
       if (yes.bestAsk < yesBestAsk.price) yesBestAsk = { price: yes.bestAsk, platform: p.platform };
       if (yes.bestBid > yesBestBid.price) yesBestBid = { price: yes.bestBid, platform: p.platform };

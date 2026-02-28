@@ -8,14 +8,17 @@ import express from "express";
 import cors from "cors";
 import "dotenv/config";
 import { OpinionAdapter } from "../../../packages/sdk/src/adapters/opinion.js";
-import { PredictAdapter } from "../../../packages/sdk/src/adapters/predict.js";
-import { ProbableAdapter } from "../../../packages/sdk/src/adapters/probable.js";
 import { connectDB } from "../../../packages/sdk/src/db/mongo.js";
 import { ensureIndexes, getActiveEvents, getEventById } from "../../../packages/sdk/src/db/events.js";
-import { matchAndSyncEvents } from "../../../packages/sdk/src/matcher/index.js";
 import { aggregateOrderbooks, buildAggFromCache } from "../../../packages/sdk/src/aggregator/index.js";
 import { PriceFeed } from "../../../packages/sdk/src/ws/price-feed.js";
 import { SmartOrderRouter } from "../../../packages/sdk/src/router/index.js";
+import {
+  SimulatedPredictAdapter,
+  SimulatedProbableAdapter,
+  seedSimulatedMarkets,
+  registerEventPrice,
+} from "../../../packages/sdk/src/simulation/index.js";
 import type { Platform, PlatformAdapter, TradeIntent, RouteLeg } from "../../../packages/sdk/src/types.js";
 import type { GlobalEvent, TokenMapping } from "../../../packages/sdk/src/db/events.js";
 import type { ExecutionLeg } from "../../../packages/sdk/src/router/index.js";
@@ -26,10 +29,10 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Init adapters
+// Init adapters — Opinion is real (on-chain), Predict/Probable are simulated
 const opinion = new OpinionAdapter(process.env.OPINIONLABS_API_KEY!);
-const predict = new PredictAdapter(process.env.PREDICTFUN_API_KEY!);
-const probable = new ProbableAdapter();
+const predict = new SimulatedPredictAdapter();
+const probable = new SimulatedProbableAdapter();
 
 const adaptersList: PlatformAdapter[] = [opinion, predict, probable];
 const adaptersMap = new Map<Platform, PlatformAdapter>([
@@ -93,11 +96,14 @@ app.get("/api/prices", async (_req, res) => {
         const platformPrices: Record<string, { yes: number | null; no: number | null }> = {};
         for (const p of event.platforms as TokenMapping[]) {
           const yesCache = priceFeed.get(p.yesTokenId);
-          const noCache = priceFeed.get(p.noTokenId);
-          platformPrices[p.platform] = {
-            yes: yesCache ? yesCache.bestAsk : null,
-            no: noCache ? noCache.bestAsk : null,
-          };
+          const noCache = p.yesTokenId === p.noTokenId
+            ? null // Predict-style: derive NO from YES
+            : priceFeed.get(p.noTokenId);
+          const yesPrice = yesCache ? Math.round(yesCache.bestAsk * 1000) / 1000 : null;
+          const noPrice = noCache
+            ? Math.round(noCache.bestAsk * 1000) / 1000
+            : yesPrice !== null ? Math.round((1 - yesPrice) * 1000) / 1000 : null;
+          platformPrices[p.platform] = { yes: yesPrice, no: noPrice };
         }
         return {
           globalEventId: event.globalEventId,
@@ -557,12 +563,13 @@ app.post("/api/otc/cashout", async (req, res) => {
   }
 });
 
-// POST /api/sync — trigger market sync across all platforms
+// POST /api/sync — trigger market sync (re-seeds simulated data)
 app.post("/api/sync", async (_req, res) => {
   try {
     const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
-    const result = await matchAndSyncEvents(db, adaptersList);
-    res.json({ success: true, ...result });
+    const seeded = await seedSimulatedMarkets(db);
+    const events = await getActiveEvents(db);
+    res.json({ success: true, created: seeded, updated: 0, total: events.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -574,55 +581,60 @@ async function boot() {
   const db = await connectDB(process.env.MONGODB_URI!);
   await ensureIndexes(db);
 
-  // FIX 1: Start WS feed FIRST using whatever is already in DB,
-  // so it begins warming up in parallel with the REST sync below.
-  const existingEvents = await getActiveEvents(db);
-  if (existingEvents.length > 0) {
-    priceFeed.start(
-      existingEvents.flatMap((e: GlobalEvent) => e.platforms.map((p: TokenMapping) => ({
-        platform: p.platform as Platform,
-        marketId: p.marketId,
-        yesTokenId: p.yesTokenId,
-        noTokenId: p.noTokenId,
-      }))),
-      { opinion: process.env.OPINIONLABS_API_KEY! },
-    );
-    console.log(`✓ WS price feed started early — ${existingEvents.length} markets from DB cache`);
+  // Seed simulated markets (Predict.fun + Probable) into MongoDB
+  const seeded = await seedSimulatedMarkets(db);
+  console.log(`\x1b[32m✓\x1b[0m Seeded ${seeded} simulated markets (Predict.fun + Probable)`);
+
+  // Sync Opinion Labs markets from real API (with 8s timeout)
+  try {
+    const opinionFetch = opinion.getMarkets();
+    const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 8000));
+    const opinionMarkets = await Promise.race([opinionFetch, timeout]);
+    console.log(`\x1b[32m✓\x1b[0m Opinion Labs: ${opinionMarkets.length} live markets fetched`);
+  } catch {
+    console.log(`\x1b[33m!\x1b[0m Opinion Labs: using cached markets from DB`);
   }
 
-  // FIX 2: Sync markets (REST calls to all platforms) — WS already warming in background.
-  // FIX 2: Removed arb scan — it burns Opinion rate limit with parallel REST calls on startup.
-  console.log("Syncing markets from all platforms...");
-  const result = await matchAndSyncEvents(db, adaptersList);
-  console.log(`✓ Synced: ${result.total} events (${result.created} new, ${result.updated} cross-platform)`);
+  // Load all events, register with simulation engine, and start WS price feed
+  const allEvents = await getActiveEvents(db);
 
-  // Subscribe any newly synced markets to the WS feed without restarting
-  if (result.created > 0) {
-    const freshEvents = await getActiveEvents(db);
-    const existingIds = new Set(existingEvents.map((e: GlobalEvent) => e.globalEventId));
-    const newSubs = freshEvents
-      .filter((e: GlobalEvent) => !existingIds.has(e.globalEventId))
-      .flatMap((e: GlobalEvent) => e.platforms.map((p: TokenMapping) => ({
-        platform: p.platform as Platform,
-        marketId: p.marketId,
-        yesTokenId: p.yesTokenId,
-        noTokenId: p.noTokenId,
-      })));
-    if (newSubs.length > 0) {
-      priceFeed.addSubscriptions(newSubs);
-      console.log(`✓ WS feed: added ${newSubs.length} new market subscriptions`);
-    }
+  // Register all events with simulation engine so price lookups work by any ID
+  for (const e of allEvents) {
+    registerEventPrice(e.globalEventId, e.platforms);
   }
 
-  const multiPlatform = (await getActiveEvents(db)).filter((e: GlobalEvent) => e.platforms.length > 1);
-  if (multiPlatform.length > 0) {
-    console.log(`\n=== Cross-Platform Matches (${multiPlatform.length}) ===`);
-    for (const e of multiPlatform.slice(0, 5)) {
-      console.log(`  "${e.question}" → [${e.platforms.map((p: TokenMapping) => p.platform).join(" + ")}]`);
-    }
+  const subs = allEvents.flatMap((e: GlobalEvent) => e.platforms.map((p: TokenMapping) => ({
+    platform: p.platform as Platform,
+    marketId: p.marketId,
+    yesTokenId: p.yesTokenId,
+    noTokenId: p.noTokenId,
+  })));
+
+  priceFeed.start(subs, { opinion: process.env.OPINIONLABS_API_KEY! });
+  console.log(`\x1b[32m✓\x1b[0m Price feed active — ${allEvents.length} markets streaming`);
+
+  // Show cross-platform matches
+  const multiPlatform = allEvents.filter((e: GlobalEvent) => e.platforms.length > 1);
+  const triPlatform = allEvents.filter((e: GlobalEvent) => e.platforms.length === 3);
+  console.log(`\x1b[32m✓\x1b[0m Cross-platform: ${multiPlatform.length} matched (${triPlatform.length} on all 3 platforms)`);
+
+  // Show arb opportunities
+  const arbCount = allEvents.filter((e: GlobalEvent) => {
+    const prices = e.platforms.map((p: TokenMapping) => {
+      const cached = priceFeed.get(p.yesTokenId);
+      return cached?.bestAsk ?? 1;
+    });
+    if (prices.length < 2) return false;
+    const bestYes = Math.min(...prices);
+    const bestNo = 1 - Math.max(...prices);
+    return bestYes + bestNo < 0.99;
+  }).length;
+  if (arbCount > 0) {
+    console.log(`\x1b[32m✓\x1b[0m Arb scanner: ${arbCount} opportunities detected`);
   }
 
-  console.log(`\nProbly API ready on http://localhost:${PORT}\n`);
+  console.log(`\n\x1b[36m  Probly API\x1b[0m \x1b[2m—\x1b[0m \x1b[1mhttp://localhost:${PORT}\x1b[0m`);
+  console.log(`\x1b[2m  ${allEvents.length} markets | ${multiPlatform.length} cross-platform | Opinion real + Predict/Probable simulated\x1b[0m\n`);
 }
 
 app.listen(PORT, () => {

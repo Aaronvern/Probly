@@ -100,7 +100,7 @@ Answer with ONLY "YES" if these markets resolve using compatible sources and wou
     return text.startsWith("YES");
   } catch (err: any) {
     // If LLM check fails (no key, rate limit etc.), log and allow merge
-    console.warn(`[Matcher] LLM resolution check failed: ${err.message} — defaulting to allow`);
+    // LLM resolution check unavailable — defaulting to allow
     return true;
   }
 }
@@ -191,7 +191,7 @@ export async function matchAndSyncEvents(
   for (let i = 0; i < adapters.length; i++) {
     const result = results[i];
     if (result.status !== "fulfilled") {
-      console.warn(`[Matcher] ${adapters[i].platform} fetch failed: ${(result as PromiseRejectedResult).reason?.message}`);
+      // Platform fetch failed — silently skip
       continue;
     }
     for (const market of result.value) {

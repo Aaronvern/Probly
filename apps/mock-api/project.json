@@ -1,0 +1,13 @@
+{
+  "name": "mock-api",
+  "sourceRoot": "apps/mock-api/src",
+  "projectType": "application",
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsx apps/mock-api/src/main.ts"
+      }
+    }
+  }
+}

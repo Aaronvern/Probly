@@ -12,6 +12,8 @@
     "generate-probable-key": "tsx scripts/generate-probable-key.ts",
     "dev:api": "pnpm dlx nx serve api",
     "dev:web": "pnpm dlx nx dev web",
+    "dev:mock": "tsx apps/mock-api/src/main.ts",
+    "seed": "tsx scripts/test-seed.ts",
     "build": "pnpm dlx nx run-many -t build",
     "test": "pnpm dlx nx run-many -t test",
     "lint": "pnpm dlx nx run-many -t lint"
