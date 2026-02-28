@@ -3,6 +3,7 @@
 import { usePrices } from "@/hooks/usePrices";
 import { Header } from "@/components/shared/Header";
 import { MarketTable } from "@/components/matrix/MarketTable";
+import { GhostMarketPanel } from "@/components/matrix/GhostMarketPanel";
 import { Activity, TrendingUp, Zap, AlertTriangle } from "lucide-react";
 
 function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
@@ -90,6 +91,8 @@ export default function MatrixTerminal() {
         )}
 
         <MarketTable markets={markets} loading={loading} />
+
+        <GhostMarketPanel />
 
         {/* Legend */}
         <div className="mt-4 flex items-center gap-4 text-xs font-mono text-terminal-muted">
