@@ -480,6 +480,47 @@ app.post("/api/ghost-markets/process", async (_req, res) => {
   }
 });
 
+// GET /api/events — recent news articles as event calendar feed
+// Queries news_articles from MongoDB, filters for event-signal keywords
+app.get("/api/events", async (req, res) => {
+  try {
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+
+    const EVENT_KEYWORDS = [
+      "summit", "conference", "hearing", "decision", "expiry", "expiration",
+      "launch", "upgrade", "report", "meeting", "vote", "election", "deadline",
+      "announce", "release", "ruling", "verdict", "regulation", "ban", "approval",
+      "etf", "fomc", "fed", "cpi", "gdp", "nfp", "payroll",
+    ];
+
+    const keywordRegex = EVENT_KEYWORDS.join("|");
+
+    const articles = await db
+      .collection("news_articles")
+      .find({
+        headline: { $regex: keywordRegex, $options: "i" },
+      })
+      .sort({ fetchedAt: -1 })
+      .limit(limit)
+      .toArray();
+
+    res.json({
+      count: articles.length,
+      events: articles.map((a) => ({
+        id: a._id?.toString(),
+        headline: a.headline,
+        source: a.source,
+        category: a.category,
+        url: a.url,
+        fetchedAt: a.fetchedAt,
+      })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST /api/sync — trigger market sync across all platforms
 app.post("/api/sync", async (_req, res) => {
   try {
