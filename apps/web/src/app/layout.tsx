@@ -1,6 +1,11 @@
 import type { Metadata, Viewport } from "next";
+import dynamic from "next/dynamic";
 import "./globals.css";
-import { Providers } from "./providers";
+
+// Never SSR wallet providers — they use indexedDB, idb-keyval, WalletConnect etc.
+const Providers = dynamic(() => import("./providers").then((m) => m.Providers), {
+  ssr: false,
+});
 
 export const metadata: Metadata = {
   title: "Probly — The 1inch of BNB Prediction Markets",
