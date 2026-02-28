@@ -51,7 +51,7 @@ export function EventCalendar() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`${API}/api/events?limit=30`)
+    fetch(`${API}/api/events?limit=100`)
       .then((r) => r.json())
       .then((d) => {
         setEvents(d.events ?? []);

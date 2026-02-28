@@ -63,7 +63,7 @@ export async function extractGhostMarket(
     // Strip markdown code fences if Claude wraps response in ```json ... ```
     const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
     const parsed = JSON.parse(cleaned);
-    if (!parsed.isPredictable || parsed.confidence < 0.45) {
+    if (!parsed.isPredictable || parsed.confidence < 0.70) {
       console.log(`[LLMExtractor] Skipped: isPredictable=${parsed.isPredictable} confidence=${parsed.confidence}`);
       return null;
     }

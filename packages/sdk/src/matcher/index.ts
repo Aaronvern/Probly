@@ -46,7 +46,7 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 }
 
 /** Threshold for considering two questions as candidates for the same event */
-const JACCARD_THRESHOLD = 0.35;
+const JACCARD_THRESHOLD = 0.15;
 
 // ---------------------------------------------------------------------------
 // LLM resolution safety check
@@ -73,8 +73,10 @@ async function checkResolutionCompatibility(
   sourceB: string | undefined,
   platformB: Platform,
 ): Promise<boolean> {
-  // If either has no resolution source, allow merge (we can't verify, not block)
+  // If both lack resolution sources, allow merge (nothing to compare)
   if (!sourceA && !sourceB) return true;
+  // If only one has a source, allow merge — can't block on partial info
+  if (!sourceA || !sourceB) return true;
 
   const client = getAnthropic();
 
@@ -271,14 +273,19 @@ export async function matchAndSyncEvents(
           continue;
         }
 
-        const compatible = await checkResolutionCompatibility(
-          anchor.market.question,
-          anchor.market.resolutionSource,
-          anchor.platform,
-          candidate.market.question,
-          candidate.market.resolutionSource,
-          candidate.platform,
-        );
+        // Identical questions always resolve the same way — skip LLM check
+        const anchorNorm = normalizeQuestion(anchor.market.question);
+        const candidateNorm = normalizeQuestion(candidate.market.question);
+        const compatible = anchorNorm === candidateNorm
+          ? true
+          : await checkResolutionCompatibility(
+              anchor.market.question,
+              anchor.market.resolutionSource,
+              anchor.platform,
+              candidate.market.question,
+              candidate.market.resolutionSource,
+              candidate.platform,
+            );
 
         if (compatible) {
           console.log(`[Matcher] ✓ Linked "${anchor.market.question}" [${anchor.platform}] ↔ [${candidate.platform}]`);

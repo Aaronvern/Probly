@@ -511,7 +511,7 @@ app.get("/api/debug/extract", async (_req, res) => {
 app.get("/api/events", async (req, res) => {
   try {
     const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
-    const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
+    const limit = Math.min(parseInt(req.query.limit as string) || 100, 200);
 
     const ghosts = await db
       .collection("ghost_markets")
