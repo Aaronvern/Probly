@@ -2,7 +2,7 @@
   <h1 align="center">⚡ Probly — Prediction Market Super-Aggregator</h1>
   <p align="center"><b>The Bloomberg Terminal for On-Chain Prediction Markets</b></p>
   <p align="center">
-    <a href="#live-deployment">Live on BNB Testnet + BSC Mainnet</a> · 
+    <a href="#live-deployment">Live on BSC Testnet + BSC Mainnet</a> · 
     <a href="#demo">Demo Video</a> · 
     <a href="#architecture">Architecture</a> · 
     <a href="#contracts">Contracts</a>
@@ -16,7 +16,7 @@
 Probly is a **unified prediction market terminal** that aggregates liquidity across Opinion Labs, Predict.fun, and Probable — surfacing real-time cross-platform arbitrage, executing Meta-Bet consensus splits, and earning auto-yield on idle capital through Lista DAO integration. One unified order book. One click to trade across every venue.
 
 > **Track:** Prediction Market Terminals  
-> **Chain:** opBNB Testnet + BSC Mainnet  
+> **Chain:** BSC Testnet + BSC Mainnet  
 > **License:** MIT  
 
 ---
@@ -57,27 +57,28 @@ Probly/
 │   ├── web/            # Next.js frontend — Matrix Terminal, Swipe UI
 │   └── mcp-server/     # Model Context Protocol server for AI agents
 ├── packages/
-│   ├── contracts/      # Solidity smart contracts (Hardhat, opBNB Testnet)
+│   ├── contracts/      # Solidity smart contracts (Hardhat, BSC Testnet)
 │   └── sdk/            # TypeScript SDK — Probable CLOB client
 └── docs/               # Architecture docs, JIT yield spec
 ```
 
 ---
 
-## 📜 Smart Contracts (opBNB Testnet)
+## 📜 Smart Contracts (BSC Testnet)
 
 <a id="contracts"></a>
 
 | Contract | Address | Purpose |
 |----------|---------|---------|
-| **AggregatorRouter** | `0xbc4cBD176eAa33223c3EF93Ed4b2844C5627506F` | Smart Order Router — routes trades, JIT yield, split execution |
-| **MockLista** | `0xB783083280fBE5f243a7945b3Bf3F88ddC04B585` | Lista DAO stable pool simulator (~4.05% APY on idle USDT) |
-| **MockPredict** | `0x65d2562a2fD6c3bb5D0d747a02df4a5F63a8cAF4` | Predict.fun venue simulator |
-| **MockProbable** | `0x32E31F9c577beB58071f355a476fFFcA3C1b89fE` | Probable venue simulator |
-| **MockUSDT** | `0x701420BA9Cfad65Ca95a1A05515b893018ea4aeD` | Test stablecoin |
-| **OTCPool** | `0x43fbcC63E1DaFa55c0d0cF5dFECDB009496B3A8B` | OTC desk — instant exit at 5% discount, zero slippage |
+| **AggregatorRouter** | [`0xbc4c...506F`](https://testnet.bscscan.com/address/0xbc4cBD176eAa33223c3EF93Ed4b2844C5627506F) | Smart Order Router — routes trades, JIT yield, split execution |
+| **MockLista** | [`0xB783...8585`](https://testnet.bscscan.com/address/0xB783083280fBE5f243a7945b3Bf3F88ddC04B585) | Lista DAO stable pool simulator (~4.05% APY on idle USDT) |
+| **MockPredict** | [`0x65d2...cAF4`](https://testnet.bscscan.com/address/0x65d2562a2fD6c3bb5D0d747a02df4a5F63a8cAF4) | Predict.fun venue simulator |
+| **MockProbable** | [`0x32E3...89fE`](https://testnet.bscscan.com/address/0x32E31F9c577beB58071f355a476fFFcA3C1b89fE) | Probable venue simulator |
+| **MockUSDT** | [`0x7014...4aeD`](https://testnet.bscscan.com/address/0x701420BA9Cfad65Ca95a1A05515b893018ea4aeD) | Test stablecoin |
+| **OTCPool** | [`0x43fb...3A8B`](https://testnet.bscscan.com/address/0x43fbcC63E1DaFa55c0d0cF5dFECDB009496B3A8B) | OTC desk — instant exit at 5% discount, zero slippage |
+| **OpinionLabs Multisig** | [`0x191b...326a`](https://bscscan.com/address/0x191b2ad7187805b5ff0a8d8db39cdf5d01ab326a) | BSC Mainnet — Opinion Labs integration |
 
-> All contracts are **verified and deployed on opBNB Testnet** with 2+ successful transactions within the hackathon timeframe.
+> All contracts are **verified and deployed on BSC Testnet** with 2+ successful transactions within the hackathon timeframe. Opinion Labs integration runs on **BSC Mainnet**.
 
 ---
 
@@ -122,7 +123,7 @@ Users can cash out positions **instantly** without AMM slippage via the `OTCPool
 |-------|-----------|
 | Frontend | Next.js, React, TypeScript, TailwindCSS |
 | Backend | Node.js, Express, WebSocket |
-| Smart Contracts | Solidity, Hardhat, opBNB Testnet |
+| Smart Contracts | Solidity, Hardhat, BSC Testnet |
 | Account Abstraction | Biconomy Smart Accounts, Session Keys |
 | Database | MongoDB Atlas |
 | AI / NLP | GPT-4o-mini, Vector Embeddings, LangChain |
@@ -204,7 +205,7 @@ npx nx test contracts
 
 | Component | Network | Status |
 |-----------|---------|--------|
-| Smart Contracts | opBNB Testnet | ✅ Deployed & Verified |
+| Smart Contracts | BSC Testnet | ✅ Deployed & Verified |
 | Opinion Labs Trading | BSC Mainnet | ✅ Live |
 | API Backend | — | ✅ Running |
 | Web Frontend | — | ✅ Running |
@@ -228,7 +229,7 @@ npx nx test contracts
 | Criteria | How Probly Delivers |
 |----------|-------------------|
 | **Design & Usability** | Swipe-to-bet retail UX, Matrix Terminal pro dashboard, gasless account abstraction |
-| **Scalability** | Nx monorepo, multi-venue SOR architecture, MongoDB Atlas, opBNB L2 throughput |
+| **Scalability** | Nx monorepo, multi-venue SOR architecture, MongoDB Atlas, BSC throughput |
 | **Innovation** | JIT yield unwrap, Meta-Bet consensus splits, AI agent trading via MCP, cross-platform arb detection |
 | **Open Source** | MIT licensed, full monorepo on GitHub, modular SDK for community extensions |
 | **Integration** | Opinion Labs (BSC Mainnet), Predict.fun, Probable, Lista DAO, Biconomy AA, MCP Protocol |
