@@ -106,10 +106,12 @@ export class OpinionAdapter implements PlatformAdapter {
   }
 
   async getPositions(walletAddress: string): Promise<UnifiedPosition[]> {
-    const result = await this.fetch<any[]>(
+    const result = await this.fetch<any>(
       `/positions/user/${walletAddress}`,
     );
-    return result.map((p: any) => ({
+    // API returns null or { list: [] } when wallet has no positions
+    const list: any[] = Array.isArray(result) ? result : (result?.list ?? result?.data ?? []);
+    return list.map((p: any) => ({
       globalEventId: "",
       question: p.marketTitle ?? "",
       outcome: "YES" as Outcome,

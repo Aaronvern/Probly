@@ -42,11 +42,23 @@ export interface SimilarityMatch {
  * Generate a 1024-dim Voyage-3 embedding for a text string.
  */
 export async function embed(text: string): Promise<number[]> {
-  const response = await client.embeddings.create({
-    model: "voyage-3",
-    input: text,
-  } as any);
-  return (response as any).data[0].embedding as number[];
+  // Voyage-3 embeddings via direct API call
+  // Uses VOYAGE_API_KEY if set, otherwise tries ANTHROPIC_API_KEY (unified post-acquisition)
+  const apiKey = process.env.VOYAGE_API_KEY ?? process.env.ANTHROPIC_API_KEY;
+  const res = await fetch("https://api.voyageai.com/v1/embeddings", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ model: "voyage-3", input: [text] }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Voyage embeddings API error ${res.status}: ${text}`);
+  }
+  const json = await res.json() as any;
+  return json.data[0].embedding as number[];
 }
 
 /**
