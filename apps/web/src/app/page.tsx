@@ -3,7 +3,7 @@
 import { usePrices } from "@/hooks/usePrices";
 import { Header } from "@/components/shared/Header";
 import { MarketTable } from "@/components/matrix/MarketTable";
-import { GhostMarketPanel } from "@/components/matrix/GhostMarketPanel";
+import { EventCalendar } from "@/components/matrix/EventCalendar";
 import { Activity, TrendingUp, Zap, AlertTriangle } from "lucide-react";
 
 function StatCard({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
@@ -64,7 +64,7 @@ export default function MatrixTerminal() {
           <StatCard
             label="Best Arb"
             value={arbMarkets.length > 0 ? `+${((arbMarkets[0]?.arbSpread ?? 0) * 100).toFixed(1)}¢` : "—"}
-            sub={arbMarkets[0]?.question?.slice(0, 20) + "..." ?? "none"}
+            sub={arbMarkets[0]?.question ? arbMarkets[0].question.slice(0, 20) + "..." : "none"}
             color="text-terminal-green"
           />
         </div>
@@ -92,7 +92,7 @@ export default function MatrixTerminal() {
 
         <MarketTable markets={markets} loading={loading} />
 
-        <GhostMarketPanel />
+        <EventCalendar />
 
         {/* Legend */}
         <div className="mt-4 flex items-center gap-4 text-xs font-mono text-terminal-muted">

@@ -148,28 +148,3 @@ export async function getPortfolio(address: string): Promise<PortfolioPosition[]
   return data.positions ?? [];
 }
 
-export interface GhostMarket {
-  id: string;
-  question: string;
-  category: string;
-  confidence: number;
-  resolutionDate: string;
-  resolutionSource: string;
-  status: "ghost" | "matched" | "rejected";
-  globalEventId: string | null;
-  resolutionRisk: {
-    level: "low" | "medium" | "high" | "critical";
-    reasons: string[];
-    recommendation: string;
-  } | null;
-  similarityScore: number | null;
-  matchedAt: number | null;
-  createdAt: number;
-}
-
-export async function getGhostMarkets(status = "ghost"): Promise<GhostMarket[]> {
-  const res = await fetch(`${API}/api/ghost-markets?status=${status}`);
-  if (!res.ok) return [];
-  const data = await res.json();
-  return data.ghosts ?? [];
-}

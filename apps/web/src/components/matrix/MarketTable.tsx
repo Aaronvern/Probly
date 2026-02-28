@@ -20,9 +20,9 @@ const PLATFORM_SHORT: Record<string, string> = {
 };
 
 function DataSourceIcon({ source }: { source: MarketPrice["dataSource"] }) {
-  if (source === "ws") return <Wifi className="w-3 h-3 text-terminal-green" title="Live WS" />;
-  if (source === "rest") return <Clock className="w-3 h-3 text-terminal-muted" title="REST" />;
-  return <WifiOff className="w-3 h-3 text-terminal-muted opacity-40" title="Pending" />;
+  if (source === "ws") return <Wifi className="w-3 h-3 text-terminal-green" />;
+  if (source === "rest") return <Clock className="w-3 h-3 text-terminal-muted" />;
+  return <WifiOff className="w-3 h-3 text-terminal-muted opacity-40" />;
 }
 
 function PriceCell({
