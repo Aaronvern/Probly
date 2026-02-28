@@ -54,6 +54,19 @@ export async function ensureIndexes(db: Db): Promise<void> {
   await col.createIndex({ "platforms.platform": 1, "platforms.marketId": 1 });
   await col.createIndex({ status: 1 });
   await col.createIndex({ slug: 1 });
+
+  // Social collections
+  await db.collection("comments").createIndex({ marketId: 1, createdAt: -1 });
+  await db.collection("likes").createIndex({ marketId: 1, address: 1 }, { unique: true });
+  await db.collection("follows").createIndex({ followerAddress: 1 });
+  await db.collection("follows").createIndex({ followerAddress: 1, targetAddress: 1 }, { unique: true });
+  await db.collection("saves").createIndex({ address: 1 });
+  await db.collection("saves").createIndex({ address: 1, marketId: 1 }, { unique: true });
+
+  // Ghost market + news
+  await db.collection("ghost_markets").createIndex({ status: 1, createdAt: -1 });
+  await db.collection("news_articles").createIndex({ processed: 1 });
+  await db.collection("news_articles").createIndex({ url: 1 }, { unique: true });
 }
 
 export async function upsertGlobalEvent(

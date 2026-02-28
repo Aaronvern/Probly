@@ -129,6 +129,22 @@ export async function getFollowing(address: string): Promise<string[]> {
   return res.json();
 }
 
+export async function toggleSave(marketId: string, address: string): Promise<{ saved: boolean }> {
+  const res = await fetch(`${API}/api/social/save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ marketId, address }),
+  });
+  if (!res.ok) throw new Error("Failed to toggle save");
+  return res.json();
+}
+
+export async function getSaves(address: string): Promise<string[]> {
+  const res = await fetch(`${API}/api/social/saves/${address}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
 export interface PortfolioPosition {
   globalEventId: string;
   question: string;

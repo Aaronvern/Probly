@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAccount } from "wagmi";
 import { useSmartAccount } from "@/hooks/useSmartAccount";
-import { executeTrade, getMarketStats, toggleLike, type MarketPrice } from "@/lib/api";
+import { executeTrade, getMarketStats, toggleLike, toggleSave, type MarketPrice } from "@/lib/api";
 import { Heart, MessageCircle, Share2, Bookmark, Zap, TrendingUp, TrendingDown } from "lucide-react";
 import { CommentSheet } from "./CommentSheet";
 import { PriceChart } from "./PriceChart";
@@ -49,7 +49,7 @@ export function SwipeCard({ market }: SwipeCardProps) {
   const [flash, setFlash] = useState<{ outcome: "YES" | "NO"; success: boolean } | null>(null);
   const dragStartX = useRef(0);
 
-  // Fetch real stats on mount
+  // Fetch real stats + saved state on mount
   useEffect(() => {
     getMarketStats(market.globalEventId, address ?? undefined).then((s) => {
       setLikeCount(s.likes);
@@ -115,11 +115,23 @@ export function SwipeCard({ market }: SwipeCardProps) {
     }
   };
 
+  const handleSave = async () => {
+    if (!address) return;
+    const wasSaved = saved;
+    setSaved(!wasSaved);
+    try {
+      const res = await toggleSave(market.globalEventId, address);
+      setSaved(res.saved);
+    } catch {
+      setSaved(wasSaved);
+    }
+  };
+
   // Swipe right = save to collections
   const onTouchStart = (e: React.TouchEvent) => { dragStartX.current = e.touches[0].clientX; };
   const onTouchEnd = (e: React.TouchEvent) => {
     const dx = e.changedTouches[0].clientX - dragStartX.current;
-    if (dx > 80) setSaved(true);
+    if (dx > 80) handleSave();
   };
 
   return (
@@ -180,7 +192,7 @@ export function SwipeCard({ market }: SwipeCardProps) {
             <span className="text-xs text-white font-mono">Share</span>
           </button>
 
-          <button onClick={() => setSaved((s) => !s)} className="flex flex-col items-center gap-1">
+          <button onClick={handleSave} className="flex flex-col items-center gap-1">
             <div className={`w-10 h-10 rounded-full backdrop-blur-sm flex items-center justify-center ${saved ? "bg-bnb/20" : "bg-black/40"}`}>
               <Bookmark className={`w-5 h-5 ${saved ? "fill-bnb text-bnb" : "text-white"}`} />
             </div>

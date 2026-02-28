@@ -376,6 +376,38 @@ app.get("/api/social/following/:address", async (req, res) => {
   }
 });
 
+// POST /api/social/save — toggle save a market for a wallet
+app.post("/api/social/save", async (req, res) => {
+  try {
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const { marketId, address } = req.body as { marketId: string; address: string };
+    const col = db.collection("saves");
+    const existing = await col.findOne({ marketId, address });
+    if (existing) {
+      await col.deleteOne({ marketId, address });
+      res.json({ saved: false });
+    } else {
+      await col.insertOne({ marketId, address, createdAt: new Date() });
+      res.json({ saved: true });
+    }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/social/saves/:address — get all saved markets for a wallet
+app.get("/api/social/saves/:address", async (req, res) => {
+  try {
+    const db = (await import("../../../packages/sdk/src/db/mongo.js")).getDB();
+    const saves = await db.collection("saves")
+      .find({ address: req.params.address })
+      .toArray();
+    res.json(saves.map((s: any) => s.marketId));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/social/stats/:marketId — likes count + comment count in one shot
 app.get("/api/social/stats/:marketId", async (req, res) => {
   try {
