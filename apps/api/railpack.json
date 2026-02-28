@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "steps": {
+    "install": {
+      "commands": ["cd ../.. && pnpm install --frozen-lockfile"]
+    }
+  },
+  "deploy": {
+    "startCommand": "npx tsx apps/api/src/main.ts"
+  }
+}
